@@ -8,6 +8,9 @@ import Footer from './partials/Footer';
 import Register from './Login/Registerform';
 import Signin from './Login/Signin';
 import ForgotPassword from './Login/ForgotPassword';
+import ChatWithUpload from "./components/ChatWithUpload";
+import Navbar from "./components/Navbar";
+import Chatbot from "./components/Chatbot"
 
 function HomePage() {
   return (
@@ -27,6 +30,8 @@ function App() {
         <Route path="/signin" element = {<Signin />} />
         <Route path="/registration" element={<Register />} />
         <Route path="/forgot-password" element = {<ForgotPassword />} />
+        <Route path="/Chatwithupload" element={<ChatWithUpload />} />
+        <Route path="/chatbot" element = {<Chatbot />} />
       </Routes>
       <Footer />
     </div>
