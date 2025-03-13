@@ -1,5 +1,6 @@
 import React from 'react';
 import { FloatingLabel, Form, Button, Container, Row, Col } from 'react-bootstrap';
+import '../css/style.css';
 
 export default function ForgotPassword() {
     // Define handleSubmit function

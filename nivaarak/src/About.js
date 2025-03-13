@@ -1,7 +1,7 @@
 import React from 'react';
 import { Container, Row, Col, Image } from 'react-bootstrap';
-import aboutImg from './components/about-img.svg';  
-import './style.css';
+import aboutImg from './images/about-img.svg';  
+import './css/style.css'
 
 
 function About() {

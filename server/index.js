@@ -1,24 +1,25 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const Applicant = require('./models/Registration');
+const express = require("express");
+const mongoose = require("mongoose");
+const cors = require("cors");
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-mongoose.connect('mongodb://localhost:27017/nivaarak');
+// Connect to MongoDB
+mongoose.connect("mongodb://localhost:27017/nivaarak", {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log("MongoDB Connected"))
+.catch(err => console.error("MongoDB Connection Error:", err));
 
-app.post('/registration', (req, res) => {
-  const { first_name, last_name, username, email, password } = req.body;
-  const fullName = `${first_name} ${last_name}`;
-  
-  Applicant.create({ name: fullName, email, password })
-      .then(applicant => res.json(applicant))
-      .catch(err => res.json(err));
-});
+// Import and Use Routes
+const applicantRoutes = require("./routes/applicantRoutes");
+app.use("/api", applicantRoutes);
 
-
-app.listen(3001, () => {
-  console.log('Server started');
+// Start Server
+const PORT = 3001;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });

@@ -1,10 +1,10 @@
 import React from 'react';
 import { Carousel } from 'react-bootstrap';
-import caroussel1 from './components/caroussel1.jpg';
-import caroussel2 from './components/caroussel2.jpg';
-import caroussel3 from './components/caroussel3.jpg';
+import caroussel1 from './images/caroussel1.jpg';
+import caroussel2 from './images/caroussel2.jpg';
+import caroussel3 from './images/caroussel3.jpg';
 
-import './style.css';
+import './css/style.css'
 
 function CustomCarousel() {
   return (

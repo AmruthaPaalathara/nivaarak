@@ -2,7 +2,7 @@
 import React from 'react';
 import { FloatingLabel, Form, Button, Container, Row, Col } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
-import '../style.css';
+import '../css/style.css';
 
 function Signin() {
     //Handle form submission
@@ -30,9 +30,12 @@ function Signin() {
                                     <Form.Control type="password" placeholder="Password" required />
                                 </FloatingLabel>
                             </Form.Group>
-                            <div className="text-end mb-3">
-                                <Link to="/forgot-password" className="forgot-password">Forgot Password?</Link>
-                            </div>
+                            <div className="d-flex justify-content-between">
+                                <Link to="/registration" className="create-account text-start">Don't have an Account? <p>Create Account</p></Link>
+                                
+                                    <Link to="/forgot-password" className="forgot-password text-end mt-0">Forgot Password?</Link>
+                                </div>
+                    
                             <div className="d-flex justify-content-center">
                                 <Button type="submit" className="button">Sign In</Button>
                             </div>

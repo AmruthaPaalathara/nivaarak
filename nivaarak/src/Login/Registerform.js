@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FloatingLabel, Form, Button, Container, Row, Col } from 'react-bootstrap';
-import '../style.css';
+import '../css/style.css';
 import axios from 'axios';
 
 function Registerform() {

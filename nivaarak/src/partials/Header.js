@@ -5,7 +5,7 @@ import Container from 'react-bootstrap/Container';
 import { Navbar, Nav, NavDropdown } from 'react-bootstrap';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBars } from '@fortawesome/free-solid-svg-icons';
-import '../style.css';
+import '../css/style.css'
 
 function Header() {
     const location = useLocation();
@@ -32,6 +32,7 @@ function Header() {
                             <NavDropdown.Item as={Link} to="/signin">Sign in</NavDropdown.Item>
                             <NavDropdown.Item as={Link} to="/registration">Registration</NavDropdown.Item>
                         </NavDropdown>
+                        <Nav.Link as={Link} to="/Chatwithupload" className='navbar-link'>Chatbot</Nav.Link>
                     </Nav>
                 </Navbar.Collapse>
             </Container>
