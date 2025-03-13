@@ -28,11 +28,12 @@ function Header() {
                     <Nav className="ms-auto text-center">
                         <Nav.Link as={Link} to="/" className='navbar-link'>Home</Nav.Link>
                         <Nav.Link onClick={scrollToAbout} className='navbar-link'>About</Nav.Link> 
+                        <Nav.Link as={Link} to="/Chatwithupload" className='navbar-link'>Chatbot</Nav.Link>
                         <NavDropdown className='navbar-link' title="Login" id="basic-nav-dropdown">
                             <NavDropdown.Item as={Link} to="/signin">Sign in</NavDropdown.Item>
                             <NavDropdown.Item as={Link} to="/registration">Registration</NavDropdown.Item>
                         </NavDropdown>
-                        <Nav.Link as={Link} to="/Chatwithupload" className='navbar-link'>Chatbot</Nav.Link>
+                        
                     </Nav>
                 </Navbar.Collapse>
             </Container>

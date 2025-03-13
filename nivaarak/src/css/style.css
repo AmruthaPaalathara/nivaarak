@@ -10,7 +10,7 @@
 
 .nivaarak {
     text-decoration: none;
-    color: rgb(58, 25, 3);
+    color: rgb(19, 9, 2);
     font-size: 20px;
     font-style: bold italic;
     font-family: "Inter", sans-serif;
@@ -20,12 +20,13 @@
 
 .navbar-link {
     text-decoration: none;
-    color: rgb(58, 25, 3);
-    font-size: 15px;
+    color: rgb(7, 3, 0);
+    font-size: 20px;
     font-family: "Inter", sans-serif;
     font-optical-sizing: auto;
     font-weight: 400;
     font-style: normal;
+    
 }
 
 /*carrousel section*/
