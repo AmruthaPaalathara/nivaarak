@@ -23,7 +23,7 @@ const MessageInput = ({ message, setMessage, sendMessage, loading, uploading }) 
 
   return (
     <Container className="p-3">
-      <div className="rounded p-3 text-light shadow-lg message-input-container">
+      <div className="rounded p-3 text-dark shadow-lg message-input-container">
         <Form onSubmit={(e) => {
           e.preventDefault();
           sendMessage();
@@ -32,10 +32,10 @@ const MessageInput = ({ message, setMessage, sendMessage, loading, uploading }) 
             {/* Optional file attachment button */}
             <Button 
               variant="link" 
-              className="text-light attachment-btn"
+              className="text-light attachment-btn flex-1"
               disabled={loading || uploading}
             >
-              <Paperclip size={18} />
+              <Paperclip size={18} fill="black" />
             </Button>
 
             <Form.Control
@@ -50,7 +50,7 @@ const MessageInput = ({ message, setMessage, sendMessage, loading, uploading }) 
               className="message-textarea"
               style={{
                 background: "transparent",
-                color: "white",
+                color: "black",
                 border: "none",
                 outline: "none",
                 resize: "none",
@@ -62,12 +62,12 @@ const MessageInput = ({ message, setMessage, sendMessage, loading, uploading }) 
               variant="link"
               type="submit"
               disabled={loading || uploading || !message.trim()}
-              className={`text-light chatbot-send-button  ${message.trim() ? 'send-active' : ''}`} 
+              className={`text-light chatbot-send-button flex-1  ${message.trim() ? 'send-active' : ''}`} 
             >
               {loading ? (
                 <Spinner animation="border" size="sm" />
               ) : (
-                <Send size={20} />
+                <Send size={20} fill="black" style={{ transform: "rotate(15deg)" }} />
               )}
             </Button>
           </InputGroup>

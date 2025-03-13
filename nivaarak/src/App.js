@@ -10,6 +10,7 @@ import Signin from './Login/Signin';
 import ForgotPassword from './Login/ForgotPassword';
 import ChatWithUpload from "./chat/ChatWithUpload";
 import './css/style.css'
+import Application from './ApplicationForm.js';
 
 
 function HomePage() {
@@ -31,6 +32,7 @@ function App() {
         <Route path="/registration" element={<Register />} />
         <Route path="/forgot-password" element = {<ForgotPassword />} />
         <Route path="/Chatwithupload" element={<ChatWithUpload />} />
+        <Route path="/application" element={<Application />} />
 
       </Routes>
       <Footer />

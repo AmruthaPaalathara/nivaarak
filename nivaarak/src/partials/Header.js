@@ -7,6 +7,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBars } from '@fortawesome/free-solid-svg-icons';
 import '../css/style.css'
 
+
 function Header() {
     const location = useLocation();
 
@@ -29,6 +30,7 @@ function Header() {
                         <Nav.Link as={Link} to="/" className='navbar-link'>Home</Nav.Link>
                         <Nav.Link onClick={scrollToAbout} className='navbar-link'>About</Nav.Link> 
                         <Nav.Link as={Link} to="/Chatwithupload" className='navbar-link'>Chatbot</Nav.Link>
+                        <Nav.Link as={Link} to="/application" className='navbar-link'>Application Registeration</Nav.Link>
                         <NavDropdown className='navbar-link' title="Login" id="basic-nav-dropdown">
                             <NavDropdown.Item as={Link} to="/signin">Sign in</NavDropdown.Item>
                             <NavDropdown.Item as={Link} to="/registration">Registration</NavDropdown.Item>

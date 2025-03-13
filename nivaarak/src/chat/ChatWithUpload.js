@@ -71,8 +71,8 @@ const ChatWithUpload = () => {
   };
 
   return (
-    <Container fluid className="p-4 chatbot-container">
-      <Card className="shadow-lg p-3">
+    <Container fluid className="p-4">
+      <Card className="shadow-lg chatbot-container">
         <Card.Body>
           <Card.Title className="text-center mb-3">Chat with DocumentAI</Card.Title>
           <ChatMessages chatHistory={chatHistory} loading={loading} chatContainerRef={chatContainerRef} />

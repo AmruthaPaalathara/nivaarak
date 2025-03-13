@@ -3,7 +3,7 @@ import { FloatingLabel, Form, Button, Container, Row, Col } from 'react-bootstra
 import '../css/style.css';
 import axios from 'axios';
 
-function Registerform() {
+function RegisterForm() {
   const [first_name, setFirstName] = useState('');
   const [last_name, setLastName] = useState('');
   const [username, setUsername] = useState('');
@@ -78,4 +78,4 @@ function Registerform() {
   );
 }
 
-export default Registerform;
+export default RegisterForm;
