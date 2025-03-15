@@ -456,7 +456,7 @@ const ApplicationForm = () => {
                         </Card.Body>
                       </Card>
 
-                      <div className="form-actions text-center">
+                      <div className="form-actions text-center justify-content-space-between">
                         <Button 
                           variant="primary" 
                           type="submit" 
