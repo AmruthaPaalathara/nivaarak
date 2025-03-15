@@ -85,6 +85,7 @@ const processPdf = async (pdfPath) => {
         console.log(` Processing PDF: ${pdfPath}`);
 
         const extractedText = await extractTextFromPdf(pdfPath);
+        console.log("Extracted Text:", extractedText);
         if (!extractedText) throw new Error("No text extracted!");
 
         const extractedDetails = await extractDetailsWithLlama(extractedText);

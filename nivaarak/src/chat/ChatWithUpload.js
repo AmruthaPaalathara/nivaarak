@@ -3,7 +3,6 @@ import axios from "axios";
 import { Container, Card } from "react-bootstrap";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-
 import ChatMessages from "./ChatMessages";
 import MessageInput from "./MessageInput";
 import '../css/style.css';
@@ -22,13 +21,24 @@ const ChatWithUpload = () => {
     }
   }, [chatHistory]);
 
-  // Archive chat when closing the session
+  // Archive chat when the component unmounts (user navigates away or closes the chat)
+  useEffect(() => {
+    return () => {
+      if (chatHistory.length > 0 || documentId) {
+        archiveChatAndClear();
+      }
+    };
+  }, [chatHistory, documentId]); // Run this effect when chatHistory or documentId changes
+
+  // Archive chat and clear the state
   const archiveChatAndClear = async () => {
-    if (chatHistory.length === 0) return;
-
     try {
-      await axios.post("http://localhost:3001/archive-chat", { chatHistory });
+      await axios.post("http://localhost:3001/archive-chat", {
+        chatHistory,
+        documentId,
+      });
 
+      // Clear the chat history and document ID
       setChatHistory([]);
       setDocumentId("");
 
@@ -49,19 +59,16 @@ const ChatWithUpload = () => {
     e.preventDefault();
     if (!message.trim()) return;
 
-    if (!documentId) {
-      toast.warning("Please upload a document first", { position: "top-right", autoClose: 2000 });
-      return;
-    }
-
     const newChatHistory = [...chatHistory, { type: "user", content: message }];
     setChatHistory(newChatHistory);
     setMessage("");
     setLoading(true);
 
     try {
-      const res = await axios.post("http://localhost:3001/ask-document", { question: message, documentId });
-
+      const res = await axios.post("http://localhost:3001/ask-document", {
+        question: message,
+        documentId, // Pass documentId if available
+      });
       setChatHistory([...newChatHistory, { type: "ai", content: res.data.response }]);
     } catch (error) {
       setChatHistory([...newChatHistory, { type: "system", content: "Error processing request. Please try again." }]);
@@ -81,10 +88,10 @@ const ChatWithUpload = () => {
             setMessage={setMessage} 
             sendMessage={sendMessage} 
             loading={loading} 
+            setDocumentId={setDocumentId} // Pass setDocumentId to MessageInput
           />
         </Card.Body>
       </Card>
-      
       <ToastContainer />
     </Container>
   );
