@@ -13,15 +13,26 @@
     "@testing-library/react": "^16.2.0",
     "@testing-library/user-event": "^13.5.0",
     "axios": "^1.8.1",
+    "bcrypt": "^5.1.1",
     "body-parser": "^1.20.3",
     "bootstrap": "^5.3.3",
+    "buffer": "^6.0.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "crypto-browserify": "^3.12.1",
+    "csurf": "^1.10.0",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "express-validator": "^7.2.1",
     "formik": "^2.4.6",
     "groq-sdk": "^0.16.0",
     "html-webpack-plugin": "^5.6.3",
+    "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.12.1",
+    "nodemailer": "^6.10.0",
+    "os-browserify": "^0.3.0",
+    "path-browserify": "^1.0.1",
+    "querystring-es3": "^0.2.1",
     "react": "^19.0.0",
     "react-bootstrap": "^2.10.9",
     "react-bootstrap-icons": "^1.11.5",
@@ -30,11 +41,19 @@
     "react-icons": "^5.5.0",
     "react-router-dom": "^6.2.1",
     "react-scripts": "^5.0.0",
+    "react-speech-recognition": "^4.0.0",
+    "react-to-print": "^3.0.5",
     "react-toastify": "^11.0.5",
+    "stream-browserify": "^3.0.0",
+    "stream-http": "^3.2.0",
+    "url": "^0.11.4",
+    "util": "^0.12.5",
     "web-vitals": "^4.2.4",
     "webpack": "^5.98.0",
     "webpack-cli": "^6.0.1",
-    "yup": "^1.6.1"
+    "yup": "^1.6.1",
+    "zlib-browserify": "^0.0.3",
+    "zxcvbn": "^4.4.2"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -53,5 +72,6 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  }
+  },
+  "proxy": "http://localhost:3001"
 }

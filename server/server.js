@@ -1,172 +1,168 @@
+
+require("dotenv").config({ path: __dirname + "/.env" });
 const express = require("express");
-const cors = require("cors");
 const mongoose = require("mongoose");
-const multer = require("multer");
-const path = require("path");
+const cors = require("cors");
+const cookieParser = require("cookie-parser");
+const rateLimit = require("express-rate-limit");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const nodemailer = require("nodemailer")
+const path = require("path")
 const fs = require("fs");
-const { processPdf } = require("./extractDetails");
-const Document = require("./models/documentSchema");
-const ChatArchive = require("./models/chatArchiveSchema"); // Import the ChatArchive model
-const ollama = require("ollama").default;
 
+const documentRoutes = require("./routes/chatbot/documentRoute.js")
+const { router } = require('./routes/chatbot/documentRoute');
+const authRoutes = require("./routes/authentication/authRoutes.js");
+const certificateRoutes = require("./routes/application/certificateApplicationRoutes.js");
+const generatePdfRoutes = require("./routes/pdfGeneration/generatePdfRoutes.js");
+const chatbotRoutes = require("./routes/chatbot/chatRoutes.js");
+const isAuthenticated = require("./middleware/authenticationMiddleware.js");
 
-import axios from 'axios';
 
 const app = express();
-app.use(cors());
+
+// Ensure Required Environment Variables Exist
+const requiredEnvVars = ["JWT_SECRET", "MONGODB_URI", "PORT", "UPLOAD_DIR", "MAX_FILE_SIZE", "ALLOWED_FILE_TYPES", "EMAIL_USER", "EMAIL_PASS"];
+for (const envVar of requiredEnvVars) {
+  if (!process.env[envVar]) {
+    console.error(`ERROR: Missing required environment variable: ${envVar}. Exiting...`);
+    process.exit(1);
+  }
+}
+
+// Middleware Setup
 app.use(express.json());
+// app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+app.use(helmet()); // Set security headers
+app.use(morgan("combined")); // Log incoming requests
 
-// Connect to MongoDB
-mongoose
-  .connect("mongodb://127.0.0.1:27017/chatbotDB", {
-    serverSelectionTimeoutMS: 5000, // Avoid connection delays
-  })
-  .then(() => console.log("MongoDB connected"))
-  .catch((err) => console.error("MongoDB connection error:", err));
+// CORS Configuration
+const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : ["http://localhost:3000"];
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
 
-// Configure Multer for File Uploads
-const upload = multer({ dest: path.join(__dirname, "uploads/") });
 
-// Route: Upload & Extract Details from PDF
-app.post("/extract-details", upload.single("pdf"), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "No file uploaded" });
-  }
-
-  console.log("File received:", req.file.path);
-
-  // Process the PDF using the function from extractDetails.js
-  const result = await processPdf(req.file.path);
-  if (!result) {
-    return res.status(500).json({ error: "Failed to process PDF" });
-  }
-
-  res.json({
-    message: "Extraction successful!",
-    documentId: result._id,
-    extractedDetails: result.extractedDetails,
-  });
+// Rate Limiting Setup
+const globalLimiter = rateLimit({
+  windowMs: process.env.RATE_LIMIT_WINDOW_MS ? parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) : 15 * 60 * 1000,  // Default to 15 minutes if not set
+  max: process.env.RATE_LIMIT_MAX ? parseInt(process.env.RATE_LIMIT_MAX, 10) : 100, // Default to 100 requests per window if not set
+  message: "Too many requests, please try again later.",
 });
+app.use(globalLimiter);
 
-// Route: Fetch Extracted Data from MongoDB
-app.get("/get-document/:id", async (req, res) => {
-  try {
-    const document = await Document.findById(req.params.id);
-    if (!document) {
-      return res.status(404).json({ error: "Document not found" });
-    }
-    res.json(document);
-  } catch (error) {
-    console.error("Error fetching document:", error);
-    res.status(500).json({ error: "Failed to fetch document" });
-  }
-});
-
-// Route: Ask Chatbot About Extracted Document
-app.post("/ask-document", async (req, res) => {
-  const { question, documentId } = req.body;
-
-  if (!question) {
-    return res.status(400).json({ error: "No question provided" });
-  }
-
-  try {
-    let prompt = question;
-    if (documentId) {
-      const document = await Document.findById(documentId);
-      if (!document) {
-        return res.status(404).json({ error: "Document not found" });
-      }
-      prompt = `Based on this document, answer the question: "${question}". Document content: ${document.extractedText}`;
-    }
-
-    const response = await ollama.chat({
-      model: "llama3:latest",
-      messages: [{ role: "user", content: prompt }],
-    });
-
-    res.json({ response: response.message.content });
-  } catch (error) {
-    console.error("Error processing document question:", error);
-    res.status(500).json({ error: "Error processing document question." });
-  }
-});
-
-// Route: Archive Chat
-app.post("/archive-chat", async (req, res) => {
-  const { chatHistory, documentId } = req.body;
-
-  if (!chatHistory || chatHistory.length === 0) {
-    return res.status(400).json({ error: "No chat history provided" });
-  }
-
-  try {
-    // Save the chat history and document ID to the database
-    const newArchive = new ChatArchive({
-      chatHistory,
-      documentId,
-      archivedAt: new Date(),
-    });
-    await newArchive.save();
-
-    res.json({ message: "Chat archived successfully!" });
-  } catch (error) {
-    console.error("Archive error:", error);
-    res.status(500).json({ error: "Failed to archive chat" });
-  }
-});
-
-// Use Applicant Routes
-const applicantRoutes = require("./routes/ApplicantRoutes");
-app.use("/api", applicantRoutes);
-
-// Start the Server
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-});
-
-
-//application registeration form
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
-
-const api = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'multipart/form-data',
+// Nodemailer Setup
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   },
 });
 
-export const submitDocumentVerification = async (formData) => {
+
+app.set("trust proxy", 1); // Trust the first proxy in front of your server
+
+// Routes
+app.use("/api/auth", authRoutes); // Authentication does not require login
+app.use("/api/generate-pdf", isAuthenticated, generatePdfRoutes);
+app.use("/api/certificates", isAuthenticated, certificateRoutes);
+app.use("/api/chat", chatbotRoutes);
+app.use("/api/documents", documentRoutes.router);
+
+app.post("/send-email", (req, res) => {
+  const { email } = req.body;
+  const fixedPdfPath = path.join(__dirname, "Caste_Certificate.pdf");
+  if (!fs.existsSync(fixedPdfPath)) {
+    return res.status(400).json({ error: "PDF file not found on the server." });
+  }
+
+  // Email options
+  const mailOptions = {
+    from: "nivaarak@gmail.com", // Sender email (your Gmail)
+    to: email, // Recipient email
+    subject: "Below is the attached document mentioning the reasons for rejection of the request for the certificate", // Email subject
+    text: "Please find the attached document.", // Email body
+    attachments: [
+      {
+        filename: "Caste_Certificate.pdf", // Use the original file name
+        path: fixedPdfPath, // Path to the uploaded file
+      },
+    ],
+  };
+
+  // Send email
+  transporter.sendMail(mailOptions, (error, info) => {
+    if (error) {
+      console.error("Error sending email:", error);
+      res.status(500).json({ success: false, message: "Failed to send email." });
+    } else {
+      console.log("Email sent:", info.response);
+      res.status(200).json({ success: true, message: "Email sent successfully." });
+    }
+  });
+});
+
+// Connect to MongoDB
+const connectToMongoDB = async (retries = 5) => {
+  while (retries) {
+    try {
+      console.log("MongoDB URI:", process.env.MONGODB_URI);
+      await mongoose.connect(process.env.MONGODB_URI, {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+        serverSelectionTimeoutMS: 5000,
+      });
+      console.log("Connected to MongoDB");
+      return;
+    } catch (err) {
+      console.error(`MongoDB Connection Error (${retries} retries left):`, err);
+      retries -= 1;
+      await new Promise(res => setTimeout(res, 5000)); // Wait 5 seconds before retrying
+    }
+  }
+  console.error("Could not connect to MongoDB. Exiting...");
+  process.exit(1);
+};
+
+connectToMongoDB();
+
+
+// Start Server
+const PORT = process.env.PORT || 3001;
+const server = app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+
+// Graceful Shutdown
+const gracefulShutdown = async () => {
   try {
-    // Create a FormData object to send files
-    const data = new FormData();
-    
-    // Append all form fields
-    data.append('username', formData.username);
-    data.append('firstName', formData.firstName);
-    data.append('lastName', formData.lastName);
-    data.append('email', formData.email);
-    data.append('phone', formData.phone);
-    data.append('documentType', formData.documentType);
-    data.append('state', formData.state);
-    
-    // Append files
-    if (formData.documentFile) {
-      data.append('documentFile', formData.documentFile);
-    }
-    
-    if (formData.idProof) {
-      data.append('idProof', formData.idProof);
-    }
-    
-    // Send the request
-    const response = await api.post('/documents/verify', data);
-    return response.data;
+    console.log("Shutting down server...");
+
+    await Promise.all([
+      new Promise((resolve) => server.close(resolve)), // Close Express server
+      mongoose.connection.close(), // Close MongoDB connection
+    ]);
+
+    console.log("Server and MongoDB connection closed.");
+    process.exit(0);
   } catch (error) {
-    throw error.response ? error.response.data : new Error('Network error occurred');
+    console.error("Error during shutdown:", error);
+    process.exit(1);
   }
 };
 
-export default api;
+process.on("SIGTERM", gracefulShutdown);
+process.on("SIGINT", gracefulShutdown); // Handle Ctrl+C
+
+// Global Error Handler (MUST BE LAST)
+app.use((err, req, res, next) => {
+  console.error("Internal Server Error:", err.stack || err.message);
+  res.status(500).json({ success: false, error: err.message || "Internal Server Error" });
+});
+

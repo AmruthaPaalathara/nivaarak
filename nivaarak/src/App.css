@@ -1,6 +1,15 @@
-.App {
-  text-align: center;
+/* Ensure full height for proper footer placement */
+html, body, #root, .app-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
+
+/* Content should expand to fill remaining space */
+.content {
+  flex: 1;  /* Makes content take full height before footer */
+}
+
 
 .App-logo {
   height: 40vmin;
@@ -35,4 +44,17 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Footer should stick to bottom */
+.footer {
+  background-color: rgb(33, 14, 1);
+  color: white;
+  text-align: center;
+  padding: 20px;
+  height: 60px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
 }
