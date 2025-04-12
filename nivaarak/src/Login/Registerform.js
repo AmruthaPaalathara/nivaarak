@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import "../css/style.css";
 import zxcvbn from "zxcvbn"; // For password strength calculation
+import API from "../../src/utils/api";
 
 function RegisterForm() {
   const [formData, setFormData] = useState({
@@ -21,8 +22,6 @@ function RegisterForm() {
   const [apiError, setApiError] = useState("");
   const [passwordStrength, setPasswordStrength] = useState(0);
   const navigate = useNavigate();
-
-  const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
 
   // Password strength calculation
   useEffect(() => {
@@ -97,8 +96,8 @@ function RegisterForm() {
 
     setLoading(true);
     try {
-      const response = await axios.post(
-        `${API_URL}/api/auth/register`,
+      const response = await API.post(
+        '/auth/register',
         formData,
         {
           headers: { "Content-Type": "application/json" },

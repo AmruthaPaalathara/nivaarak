@@ -1,15 +1,15 @@
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const Session = require("../../models/authentication/sessionSchema");
-// const User = require("../../models/authentication/userSchema.js");
-const rateLimit = require("express-rate-limit");
+const { User} = require("../../models/authentication/userSchema.js");
+const rateLimit = require('express-rate-limit');
 const redisClient = require("../../config/redisConfig"); // Assuming Redis setup
 
 const refreshTokens = new Map();
 const hashToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
 
 // Session expiry time (default: 1 hour)
-const sessionExpiryTime = Number(process.env.SESSION_EXPIRY_TIME)|| 60 * 60 * 1000;
+const sessionExpiryTime = Number(process.env.SESSION_EXPIRY_TIME) || 60 * 60 * 1000;
 
 
 
@@ -41,7 +41,10 @@ const authLimiter = rateLimit({
 // Middleware to Authenticate User via JWT
 const authenticateJWT = (roles = []) => async (req, res, next) => {
   const authHeader = req.headers.authorization;
+  console.log(" Auth Header:", authHeader);
+
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    console.log("Invalid or missing token");
     logAuthAttempt(req, false, "Unauthorized - No token provided");
     return res.status(401).json({ success: false, message: "Unauthorized - No token provided" });
   }
@@ -60,15 +63,28 @@ const authenticateJWT = (roles = []) => async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Log the decoded token for debugging
+    console.log(decoded);
+    // Check if decoded.userId is a number
+    if (typeof decoded.userId  !== 'number') {
+      return res.status(400).json({ success: false, message: 'Invalid user ID format' });
+    }
+
+    // Attach full user details (excluding password) to the request
+    const user = await User.findOne({ userId: decoded.userId }).select("-password");
+    if (!user) {
+      return res.status(401).json({ success: false, message: "Unauthorized - User not found" });
+    }
+
+    req.user = user;
+    logAuthAttempt(req, true, "Authentication successful");
 
     if (roles.length && !roles.includes(decoded.role)) {
       logAuthAttempt(req, false, "Forbidden - Insufficient permissions");
       return res.status(403).json({ success: false, message: "Forbidden - Insufficient permissions" });
     }
-
-    req.user = decoded;
-    logAuthAttempt(req, true, "Authentication successful");
     next();
+    
   } catch (error) {
     console.error("Authentication Error:", error);
     const message = error.name === "TokenExpiredError" ? "Token expired. Please log in again." : "Invalid token";
@@ -128,14 +144,19 @@ const logAuthAttempt = (req, success, message) => {
 
 const authenticateUser = (req, res, next) => {
   const token = req.header("Authorization")?.split(" ")[1];
-
   if (!token) {
     return res.status(401).json({ error: "Access denied. Please log in first." });
   }
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Log the decoded token for debugging
+    console.log(decoded);
     req.user = decoded; // Attach user info to request
+    // Check if decoded.userId is a number
+    if (typeof decoded.userId !== 'number') {
+      return res.status(400).json({ success: false, message: 'Invalid user ID format' });
+    }
     next();
   } catch (error) {
     return res.status(403).json({ error: "Invalid or expired token." });
@@ -169,4 +190,4 @@ setInterval(async () => {
 }, 60 * 60 * 1000);
 
 // Export authentication methods and rate limiter
-module.exports = { authenticateJWT, authenticateSession, authLimiter, authenticateUser  };
+module.exports = { authenticateJWT, authenticateSession, authLimiter, authenticateUser };

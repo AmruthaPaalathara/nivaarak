@@ -5,7 +5,7 @@ const User = require("../../models/authentication/userSchema"); // Ensure the co
 //  GET User Profile
 exports.getUserProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId).select("-password"); // Exclude password
+    const user = await User.findOne({ userId: userId }).select("-password"); // Exclude password
     if (!user) {
       return res.status(404).json({ success: false, error: "User not found" });
     }

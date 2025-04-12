@@ -28,7 +28,7 @@ const chatSchema = new mongoose.Schema(
     userId: { type: Number, required: true }, //stores userId by refering to 
     documentId: { type: mongoose.Schema.Types.ObjectId, ref: "Document" }, //stores or extracts documentId from Document model (documentSchema.js)
     
-    sessionId: { type: String, required: true, unique:true, index:true }, //to identify a chat session, to ensure each chat belongs to a valid session
+    sessionId: { type: String, required: true, unique:true }, //to identify a chat session, to ensure each chat belongs to a valid session
     status: { type: String, enum: ["active", "closed", "archived"], default: "active" }, //status of the chat, whether it is active or closed. by default the chat is active(i.e., when a new chat happens, the chat sessions begins as active)
     messages: [chatMessageSchema],
   },
@@ -38,7 +38,7 @@ const chatSchema = new mongoose.Schema(
 
 
 // Add indexes
-chatSchema.index({ sessionId: 1 }); //retrieving the sessionId
+// chatSchema.index({ sessionId: 1 }); //retrieving the sessionId
 chatSchema.index({ userId: 1, status: 1 });
 chatSchema.index({ documentId: 1 }); //retrieving the documentId
 chatSchema.index({ updatedAt: -1 }); //retrieving the recent chat. it is ordered in descneding order

@@ -8,10 +8,11 @@ import PrintableContent from "../chat/components/generatedPdfContent";
 import { useReactToPrint } from "react-to-print";
 import GeneratePDF from "../chat/components/generatePdf";
 
+
 function Header() {
   const location = useLocation();
   const navigate = useNavigate();
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem("accessToken");
 
   const componentRef = useRef();
 
@@ -36,7 +37,7 @@ function Header() {
 
   const handleLogout = (e) => {
     e.preventDefault();
-    localStorage.removeItem("token"); // Remove token on logout
+    localStorage.removeItem("accessToken"); // Remove token on logout
     sessionStorage.removeItem("token");
     navigate("/signin"); // Redirect to login page
   };
@@ -56,7 +57,7 @@ function Header() {
             onClick={() => console.log("Navigating to /chat")}>Chatbot</Nav.Link> 
 
             {/* Show "Login" when NOT logged in, Show "User" Dropdown when logged in */}
-            {/* {token ? ( */}
+
             {token ? (  
               <NavDropdown title="User" id="user-dropdown" className="navbar-link">
                 <NavDropdown.Item as={Link} to="/profile">Profile</NavDropdown.Item>

@@ -65,12 +65,13 @@ def extract_text_with_ocr(pdf_path):
     try:
         start_time = time.time()
         logging.info(f"Starting conversion of {pdf_path} to images.")
-        images = convert_from_path(pdf_path, dpi=300, thread_count=4, fmt='jpeg', grayscale=True)
+        images = convert_from_path(pdf_path, dpi=300, thread_count=4, fmt='jpeg', grayscale=True, first_page=1, last_page=1)
         logging.info(f"PDF converted to {len(images)} images in {time.time()-start_time:.2f}s")
 
         text_parts = []
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = [executor.submit(ocr_page, image) for image in images]
+            text_parts = [future.result() for future in futures]
             for future in as_completed(futures):
                 text_parts.append(future.result())
 

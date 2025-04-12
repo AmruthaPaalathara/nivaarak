@@ -68,9 +68,14 @@ userSchema.pre("save", async function (next) {
       this.userId = counter.sequence_value;
     }
 
-    if (this.password && this.isModified("password")) { 
-      const salt = await bcrypt.genSalt(10);
+    if (this.password && this.isModified("password")) {
+        console.log("Password before hashing:", this.password);
+
+        const salt = await bcrypt.genSalt(10);
       this.password = await bcrypt.hash(this.password, salt);
+        console.log("Password after hashing:", this.password);
+
+
     }
 
     next();
@@ -90,7 +95,6 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
   }
 };
 
-// Indexes for frequently queried fields
 
 
 module.exports = { User: mongoose.model("User", userSchema), Counter };

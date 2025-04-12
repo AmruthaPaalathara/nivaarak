@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const crypto = require("crypto"); // Import missing crypto module
+const {User } = require("./userSchema")
 
 const sessionSchema = new mongoose.Schema({
   sessionId: { type: String, required: true, unique: true },
