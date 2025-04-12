@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { FloatingLabel, Form, Button, Container, Row, Col, Alert, Spinner } from "react-bootstrap";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -24,7 +24,7 @@ export default function ForgotPassword() {
 
     try {
       // Verify the username
-      await axios.post(`${API_URL}/api/auth/verify-username`, { username });
+      await axios.post(`${API_URL}/api/auth/verify-username`,  { username: username.trim() });
 
       // If username is valid, move to step 2
       setStep(2);
@@ -63,11 +63,21 @@ export default function ForgotPassword() {
       setSuccess("Password updated successfully. Redirecting to login page...");
       setTimeout(() => navigate("/"), 3000); // Redirect to login after 3 seconds
     } catch (err) {
+      setNewPassword("");
+      setConfirmNewPassword("");
       setError(err.response?.data?.message || "Failed to update password. Please try again.");
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (success.includes("Password updated")) {
+      const timer = setTimeout(() => navigate("/"), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [success, navigate]);
+
 
   return (
     <Container className="forgot-password-container">

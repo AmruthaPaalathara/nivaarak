@@ -16,13 +16,13 @@ const allowedDocumentTypes = [
 
 const validateApplicationForm = [
   // Validate and sanitize inputs
-  body("first_name")
+  body("firstName")
     .trim()
     .notEmpty()
     .withMessage("First name is required")
     .escape(), // Sanitize to prevent XSS
 
-  body("last_name")
+  body("lastName")
     .trim()
     .notEmpty()
     .withMessage("Last name is required")
@@ -39,7 +39,7 @@ const validateApplicationForm = [
     .notEmpty()
     .withMessage("Phone number is required")
     .custom((value) => {
-      if (!/^\d{10}$/.test(value)) {
+        if (!/^[6-9]\d{9}$/.test(value)) {
         throw new Error("Phone number must be 10 digits");
       }
       return true;
@@ -59,13 +59,13 @@ const validateApplicationForm = [
     .escape(), // Sanitize to prevent XSS
 
   body("agreementChecked")
-    .custom((value) => {
-      if (value !== true && value !== "true") { // Handle both boolean and string values
-        throw new Error("You must agree to the terms and conditions.");
-      }
-      return true;
-    }),
-  
+      .custom((value) => {
+        if (!(value === true || value === "true" || value === "on")) {
+          throw new Error("You must agree to the terms and conditions.");
+        }
+        return true;
+      }),
+
 
   // Handle validation errors
   (req, res, next) => {

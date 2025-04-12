@@ -5,7 +5,7 @@ const logger = require("../../utils/logger");
 
 // Configuration using environment variables
 const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, "../uploads/");
-const allowedFileTypes = process.env.ALLOWED_FILE_TYPES?.split(",") || ["image/jpeg", "image/png", "application/pdf"];
+const allowedFileTypes = process.env.ALLOWED_FILE_TYPES || [ "application/pdf"];
 const allowedExtensions = [".jpg", ".jpeg", ".png", ".pdf"]; // Allowed file extensions
 const maxFileSize = parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024; // 5MB
 
@@ -27,8 +27,21 @@ const sanitizeFilename = (filename) => {
 // Storage configuration
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    logger.info(`Uploading file: ${file.originalname} (${file.size} bytes)`);
-    cb(null, uploadDir);
+    const documentType = req.body.documentType || "others"; // Default to 'others' if not provided
+    const documentDir = path.join(uploadDir, documentType.replace(/\s+/g, "_").toLowerCase()); // Normalize folder name
+    // Ensure document-type directory exists
+    try {
+      if (!fs.existsSync(documentDir)) {
+        fs.mkdirSync(documentDir, { recursive: true });
+        logger.info(`Created directory: ${documentDir}`);
+      }
+    } catch (err) {
+      logger.error(`Failed to create directory: ${err.message}`);
+      return cb(new Error("Failed to create directory for uploads"), false);
+    }
+
+    logger.info(`Uploading to: ${documentDir}`);
+    cb(null, documentDir);
   },
   filename: (req, file, cb) => {
     const sanitizedFilename = sanitizeFilename(file.originalname);
@@ -45,7 +58,7 @@ const fileFilter = (req, file, cb) => {
     cb(null, true);
   } else {
     logger.warn(`Rejected file: ${file.originalname} - Invalid type: ${file.mimetype}`);
-    cb(new Error(`Invalid file type: ${file.mimetype}. Only PDF, JPG, and PNG allowed.`), false);
+    cb(new Error(`Invalid file type: ${file.mimetype}. Only PDF is allowed.`), false);
   }
 };
 

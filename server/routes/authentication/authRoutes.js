@@ -14,7 +14,7 @@ router.post("/register", authLimiter,validateRegistration, authController.regist
 
 
 // User Login
-router.post("/login", loginLimiter, validateLogin, authController.loginUser);
+router.post("/login", authLimiter, loginLimiter, validateLogin, authController.loginUser);
 
 // Verify Username for Forgot Password
 router.post("/verify-username", authLimiter, authController.verifyUsername);
@@ -26,9 +26,10 @@ router.post("/forgot-password", authLimiter, validateForgotPassword, authControl
 router.post("/reset-password", authLimiter, validateForgotPassword, authController.resetPassword);
 
 // Get User Profile (Protected Route)
-router.get("/profile", authenticateJWT, authLimiter, authController.getUserProfile);
+router.get("/profile", authenticateJWT(), authLimiter, authController.getUserProfile);
 
 // Logout User (Protected Route)
-router.post("/logout", authenticateJWT,authLimiter, authController.logoutUser);
+router.post("/logout", authenticateJWT(),authLimiter, authController.logoutUser);
+
 
 module.exports = router;

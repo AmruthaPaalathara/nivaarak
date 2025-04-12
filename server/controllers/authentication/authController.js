@@ -1,7 +1,7 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const { User } = require("../../models/authentication/userSchema.js");
+const { User, Counter } = require("../../models/authentication/userSchema.js");
 const { validationResult } = require("express-validator");
 const rateLimit = require("express-rate-limit");
 const Session = require("../../models/authentication/sessionSchema.js");
@@ -20,27 +20,19 @@ const validatePassword = (password) => {
   return passwordRegex.test(password);
 };
 
+const getNextSequence = async (sequenceName) => {
+  const counter = await Counter.findByIdAndUpdate(
+      { _id: sequenceName },
+      { $inc: { sequence_value: 1 } },
+      { new: true, upsert: true }
+  );
+  return counter.sequence_value;
+};
+
 exports.registerUser = async (req, res) => {
   try {
     console.log(" Received Data:", req.body);
     const { first_name, last_name, username, email, phone, password, confirmPassword } = req.body;
-
-    const missingFields = [];
-    if (!first_name) missingFields.push("first_name");
-    if (!last_name) missingFields.push("last_name");
-    if (!username) missingFields.push("username");
-    if (!email) missingFields.push("email");
-    if (!phone) missingFields.push("phone");
-    if (!password) missingFields.push("password");
-    if (!confirmPassword) missingFields.push("confirmPassword");
-
-    if (missingFields.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: "All fields are required.",
-        missingFields,
-      });
-    }
 
     // Trim inputs and normalize email
     const trimmedEmail = email.trim().toLowerCase();
@@ -59,30 +51,29 @@ exports.registerUser = async (req, res) => {
     }
 
     // Check if user already exists (by email or username)
-    const existingEmail = await User.findOne({ email: email.trim().toLowerCase()  });
+    const existingEmail = await User.findOne({ email: trimmedEmail });
     if (existingEmail) {
       return res.status(400).json({ success: false, message: "Email already in use." });
     }
 
-    const existingUser = await User.findOne({ username: username.trim()});
+    const trimmedUsername = username.trim();
+    const existingUser = await User.findOne({ username: trimmedUsername});
     if (existingUser) {
       return res.status(400).json({success: false, message:" Username already in use. "})
     }
 
-
-
-    // Hash Password AFTER Validation
-
-
+    console.log("Saving password (trimmed):", trimmedPassword);
     // Create new user
     const newUser = new User({
       first_name: first_name.trim(),
       last_name: last_name.trim(),
-      username: username.trim(),
+      username: trimmedUsername,
       email: trimmedEmail,
       phone: phone.trim(),
       password: trimmedPassword,
     });
+
+    console.log("User Object to Save:", newUser);
 
     await newUser.save();
     res.status(201).json({ success: true, message: "User registered successfully!" });
@@ -92,26 +83,25 @@ exports.registerUser = async (req, res) => {
   }
 };
 
-
 exports.loginUser = async (req, res) => {
   try {
 
     const { username, password } = req.body;
     console.log("Login request received:", { username, password });
+    console.log("Entered Password:", password, typeof password);
 
-    //  Find user in the database
-    const user = await User.findOne({ username: username.trim() });
-    if (!user || !password) {
+
+    if (!username  || !password) {
       return res.status(400).json({ success: false, message: "Username and password are required." });
     }
 
-    if (!user) {
-      console.log("User not found:", username);
-      return res.status(401).json({ success: false, message: "User not found. Please register." });
-    }
+    const trimmedUsername = username.trim();
+    console.log("Trimmed Password: ", trimmedUsername);
+    //  Find user in the database
+    const user = await User.findOne({ username: trimmedUsername });
 
-    console.log("Entered Password:", password);
-    console.log("Stored Hashed Password:", user.password);
+    console.log("Entered Password by filtering with username:", password);
+    console.log("Stored Hashed Password by filtering with username:", user.password);
 
     //  Compare password with hashed password
     const isMatch = await bcrypt.compare(password, user.password);
@@ -120,9 +110,18 @@ exports.loginUser = async (req, res) => {
       return res.status(401).json({ success: false, message: "Invalid password. Try again." });
     }
 
-    const tokenPayload = { id: user.userId, username: user.username };
-    const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: "1h" });
-    console.log("Generated Token:", token);
+    const tokenPayload = {  userId: user.userId, username: user.username };
+    const accessToken = jwt.sign(  tokenPayload, process.env.JWT_SECRET, { expiresIn: "15m" });  // Short-lived
+    const refreshToken = jwt.sign(tokenPayload, process.env.REFRESH_SECRET, { expiresIn: "7d" });  // Long-lived
+
+    console.log("Signing JWT with userId:", user.userId, typeof user.userId);
+    // Storing refresh token in httpOnly cookie (more secure approach):
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",  // Use secure cookies in production
+      sameSite: "Strict",  // Prevents CSRF attacks
+      maxAge: 7 * 24 * 60 * 60 * 1000  // 7 days
+    });
 
     //  Generate unique session ID
     const sessionId = crypto.randomBytes(16).toString("hex");
@@ -138,14 +137,16 @@ exports.loginUser = async (req, res) => {
 
     await newSession.save();
 
-    console.log("Login successful:", token, sessionId);
+    console.log("Generated Access Token:", accessToken);
+    console.log("Generated Refresh Token:", refreshToken);
+    console.log("Login successful:", accessToken, sessionId);
 
     //  Return JWT token and session ID to frontend
     return res.status(200).json({
       success: true,
       message: "Login successful",
       userId: user.userId,
-      token,
+      accessToken,   //  send accessToken
       sessionId, //  Include session ID for frontend tracking
     });
   } catch (error) {
@@ -192,7 +193,7 @@ exports.forgotPassword = async (req, res) => {
 // Get User Profile
 exports.getUserProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId).select("-password"); // Exclude password
+    const user = await User.findOne({  userId: req.user.userId }).select("-password"); // Exclude password
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -210,17 +211,19 @@ exports.getUserProfile = async (req, res) => {
   }
 };
 
-
-
 // Verify if a username exists
 exports.verifyUsername = async (req, res) => {
   try {
+
     const { username } = req.body;
+
     if (!username) {
       return res.status(400).json({ success: false, message: "Username is required." });
     }
+
     // Trim the username for safety
     const user = await User.findOne({ username: username.trim() });
+
     if (user) {
       return res.status(200).json({ success: true, message: "Username exists." });
     } else {
@@ -253,9 +256,9 @@ exports.resetPassword = async (req, res) => {
     }
 
     const user = await User.findOne({ username: username.trim() });
-if (!user) {
-  return res.status(404).json({ success: false, message: "User not found." });
-}
+    if (!user) {
+      return res.status(404).json({success: false, message: "User not found."});
+    }
 
     // Hash and save the new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -263,7 +266,6 @@ if (!user) {
       { username: username.trim() },
       { password: hashedPassword }
     );
-
     res.json({ success: true, message: "Password reset successful!" });
   } catch (error) {
     console.error("Reset Password Error:", error);
@@ -272,20 +274,56 @@ if (!user) {
 };
 
 // Logout User
-
 exports.logoutUser = async (req, res) => {
   try {
     if (!req.user || !req.user.userId) {
       return res.status(401).json({ success: false, message: "Unauthorized request." });
     }
-
     // Remove all sessions for the user
     await Session.deleteMany({ userId: req.user.userId });
-
     res.status(200).json({ success: true, message: "Logout successful from all devices." });
   } catch (error) {
     console.error("Logout Error:", error);
     res.status(500).json({ success: false, message: "Logout failed. Please try again later." });
   }
 };
+
+exports.refreshToken = async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+    if (!refreshToken) {
+      return res.status(401).json({ message: "Refresh Token required." });
+    }
+
+    jwt.verify(refreshToken, process.env.REFRESH_SECRET, async (err, decoded) => {
+      if (err) {
+        return res.status(403).json({ success: false, message: "Invalid or expired refresh token." });
+      }
+
+      // Optional: check if refresh token is revoked (if you store it)
+      const isRevoked = await isTokenRevoked(refreshToken);
+      if (isRevoked) {
+        return res.status(403).json({ success: false, message: "Refresh token has been revoked." });
+      }
+
+      // Issue a new access token
+      const newAccessToken = jwt.sign(
+          { userId: decoded.userId, role: decoded.role }, // Include whatever info is needed
+          process.env.JWT_SECRET,
+          { expiresIn: "15m" }
+      );
+
+      return res.status(200).json({
+        success: true,
+        accessToken: newAccessToken,
+      });
+    });
+
+  } catch (error) {
+    console.error("Refresh Token Error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.authLimiter = authLimiter;
 

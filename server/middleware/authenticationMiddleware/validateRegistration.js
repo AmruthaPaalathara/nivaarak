@@ -32,11 +32,12 @@ const validateRegistration = [
     .withMessage("Username can only contain letters, numbers, and underscores")
     .custom(async (value) => {
       try {
-      const user = await User.findOne({ username: value });
-      if (user) {
-        throw new Error("Username already in use");
-      }
+          const user = await User.findOne({ username: value });
+        if (user) {
+            throw new Error("Username already in use");
+        }
     } catch (error) {
+          console.error("Error checking username:", error);
       throw new Error("Database error while checking username availability");
     }
   }),
@@ -48,15 +49,16 @@ const validateRegistration = [
     .isEmail()
     .withMessage("Invalid email format")
     .custom(async (value) => {
+        const email = value.toLowerCase();
       console.log("Checking email:", value.toLowerCase());
       try {
-        const user = await User.findOne({ email: value.toLowerCase() });
-        if (user) {
-          throw new Error("Email already in use");
-        }
-      } catch (error) {
-        console.error("Database query error:", error);
-        throw new Error("Database error while checking email availability");
+          const existingUser = await User.findOne({ email });
+          if (existingUser) {
+              throw new Error("Email already in use");
+          }
+      } catch (err) {
+          console.error("Database query error:", err);
+          throw new Error("Database error while checking email availability");
       }
     }),
 

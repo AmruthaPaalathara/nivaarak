@@ -26,8 +26,11 @@ const extractTextFromPdf = (pdfPath) => {
     const command = `${PYTHON_CMD} "${scriptPath}" "${sanitizedPath}"`;
 
     console.log(`Executing: ${command}`);
+    console.time("OCR_PROCESS");
 
     const child = exec(command, (error, stdout, stderr) => {
+      console.timeEnd("OCR_PROCESS");
+
       if (error) {
         console.error("Extraction failed:", stderr || error.message);
         reject(new Error(stderr || "Text extraction failed"));
@@ -47,6 +50,7 @@ const extractTextFromPdf = (pdfPath) => {
     });
   });
 };
+
 // Enhanced document upload with checksum and duplicate detection
 const uploadDocument = async (req, res) => {
   try {

@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext'; // Import useAuth
 import { Form, Button, Container, Row, Col, Alert, Spinner } from 'react-bootstrap';
 import '../css/style.css'; // Import your custom CSS file
+import { refreshToken } from "../utils/refreshToken";
+import { authFetch } from "../utils/authFetch";
+import API from "../../src/utils/api";
 
 function Signin() {
     const [username, setUsername] = useState('');
@@ -13,47 +16,55 @@ function Signin() {
     const navigate = useNavigate();
     const { login } = useAuth(); // Use the login function from AuthContext
 
-    const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001'; // Fallback API URL
+    // const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001'; // Fallback API URL
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
         setError("");
-      
+
         // Validate input fields
         if (!username || !password) {
           setError("Username and password are required.");
           setLoading(false);
           return;
         }
-      
+
         try {
-          const response = await fetch("http://localhost:3001/api/auth/login", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
+          const response = await API.post("/auth/login",
+            {
+                username: username.trim(),
+                password,
             },
-            body: JSON.stringify({ username, password }),
-            credentials: "include", // Include cookies if using sessions
-          });
-      
-          const data = await response.json();
-      
-          if (!response.ok) {
-            throw new Error(data.message || "Login failed. Please try again.");
-          }
-      
-          if (data.token && data.userId) {  //  Ensure userId is received
-            localStorage.setItem("token", data.token);   // Store token
-            localStorage.setItem("userId", data.userId); //  Store userId
+              {
+                  headers: {
+                      "Content-Type": "application/json",
+                  },
+                  withCredentials: true, // to send cookies like session ID
+              }
+              );
 
-            console.log(" User ID stored:", data.userId);
-            console.log(" Token stored:", data.token);
+            const data = response.data;
+            if (data.success) {
+                navigate("/"); // or whatever your home route is
+            } else {
+                alert("Login failed: " + data.message);
+            }
 
-      
-            // Mark user as authenticated (update your state/context)
-            login();
-      
+
+            if (data.accessToken && data.userId) {  //  Ensure userId is received
+              localStorage.setItem("accessToken", data.accessToken);
+              localStorage.setItem("refreshToken", data.refreshToken);
+              localStorage.setItem("sessionId", data.sessionId);
+              localStorage.setItem("userId", data.userId);
+
+
+              console.log(" User ID stored:", data.userId);
+              console.log("Access Token stored:", data.accessToken);
+
+              // Mark user as authenticated (update your state/context)
+              login(data.accessToken);
+
             // Redirect based on user role (optional)
             if (data.role === "admin") {
               navigate("/admin-dashboard");
@@ -74,6 +85,14 @@ function Signin() {
           setLoading(false);
         }
       };
+
+    const handleLogout = () => {
+        localStorage.clear();
+        navigate("/login");
+    };
+
+
+
     return (
         <Container className="signin-container">
             <Row className="justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
@@ -87,7 +106,7 @@ function Signin() {
                                 type="text"
                                 placeholder="Enter username"
                                 value={username}
-                                onChange={(e) => setUsername(e.target.value)}
+                                onChange={(e) => setUsername(e.target.value.trim())}
                                 required
                                 minLength={3}
                                 maxLength={20}
@@ -127,7 +146,7 @@ function Signin() {
                                 </Link>
                             </p>
                             <p>
-                                Forgot password?{' '} 
+                                Forgot password?{' '}
                                 <Link to="/forgot-password" className='text-decoration-none' style={{ color: 'black' }}>
                                     Reset it here
                                 </Link>
