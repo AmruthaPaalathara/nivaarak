@@ -1,11 +1,11 @@
 //importing mongoose to interact with MongoDB
 
 const mongoose = require("mongoose");
-const { Counter } = require("../authentication/userSchema.js");
+const { Counter , User} = require("../authentication/userSchema.js");
 
 const documentSchema = new mongoose.Schema( //creates documentSchema that defines how document-related data will be stored in MongoDB
   {
-    userId: { type: Number, required: true },
+    userId: { type: Number, required: true, ref: "User" },
     customId: { type: String, required: true, unique: true },
     filename: { type: String, required: true, trim: true }, //stores filename, extra spaces removed
     filePath: { 
@@ -30,7 +30,6 @@ const documentSchema = new mongoose.Schema( //creates documentSchema that define
 );
 
 // Add indexes
-
 documentSchema.index({ createdAt: -1 }); // Faster retrieval of recent documents
 documentSchema.index({ filename: 1 }); // Index for filename
 documentSchema.index({ userId: 1 }); // Index for document type

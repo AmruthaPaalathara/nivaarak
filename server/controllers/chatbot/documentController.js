@@ -54,57 +54,47 @@ const extractTextFromPdf = (pdfPath) => {
 // Enhanced document upload with checksum and duplicate detection
 const uploadDocument = async (req, res) => {
   try {
-
-    const { customId, documentType } = req.body;
+    const { customId, documentType } = req.body; //extracting customId, userId and documentType from requests.
     const userId = Number(req.body.userId);
-
-
     // Ensure user is logged in
     if (!userId || isNaN(userId)) {
       return res.status(401).json({ success: false, message: "Unauthorized: Invalid userId" });
     }
-
-    // Check if user exists
+    // Check if user exists in the collection
     const userExists = await User.findOne({ userId });
     if (!userExists) {
       return res.status(401).json({ success: false, message: "Unauthorized: User does not exist" });
     }
-
-    const existingCustomId = await Document.findOne({ customId });
+    const existingCustomId = await Document.findOne({ customId }); // If a document with this ID already exists, it returns an error.
     if (existingCustomId) {
       return res.status(400).json({ success: false, message: "customId already exists" });
     }
-
-    if (!req.file) {
+    if (!req.file) { //checks whether a file is uploaded or not.
       return res.status(400).json({
         success: false,
         message: "No file uploaded"
       });
     }
-
     console.log("Received Upload Request:", req.body);
     console.log("User ID in request:", req.body.userId);
-
-
-    if (!ALLOWED_MIME_TYPES.includes(req.file.mimetype)) {
+    if (!ALLOWED_MIME_TYPES.includes(req.file.mimetype)) { //ensuring whether the uploaded file is pdf or not
       fs.unlinkSync(req.file.path);
       return res.status(400).json({
         success: false,
         message: "Only PDF files are allowed"
       });
     }
-
-    if (req.file.size > MAX_FILE_SIZE) {
+    if (req.file.size > MAX_FILE_SIZE) { //ensuring a max file size also
       fs.unlinkSync(req.file.path);
       return res.status(400).json({
         success: false,
         message: `File exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`
       });
     }
-
     // Generate checksum
     const fileBuffer = fs.readFileSync(req.file.path);
-    const checksum = crypto.createHash("sha256").update(fileBuffer).digest("hex");
+    const checksum = crypto.createHash("sha256").update(fileBuffer).digest("hex"); //If a document with this checksum
+    // already exists, the upload is considered a duplicate, and the user gets a message saying the file already exists.
 
     // Check for duplicate
     const existingDoc = await Document.findOne({ checksum });
@@ -112,14 +102,12 @@ const uploadDocument = async (req, res) => {
       fs.unlinkSync(req.file.path);
       return res.json({ success: true, message: "Document already exists", data: existingDoc });
     }
-
     // Process document
-    const extractionResult = await extractTextFromPdf(req.file.path);
+    const extractionResult = await extractTextFromPdf(req.file.path); //ocr text extraction
     if (!extractionResult.text) {
       throw new Error("No text extracted");
     }
-
-    const newDocument = new Document({
+    const newDocument = new Document({ //creates a model
       userId,
       customId,
       filename: req.file.originalname,
@@ -133,8 +121,6 @@ const uploadDocument = async (req, res) => {
       },
       extractedText: extractionResult.text
     });
-
-
     console.log("Saving document to MongoDB...");
     try {
       const savedDoc = await newDocument.save();
@@ -144,14 +130,12 @@ const uploadDocument = async (req, res) => {
     }
 
     console.log("Checking saved document in DB...");
-    const savedDocument = await Document.findById(newDocument._id);
+    const savedDocument = await Document.findById(newDocument._id); //post save verification, by querying _id.
     if (!savedDocument) {
       console.error("Document was not saved properly!");
     } else {
       console.log("Document verified in MongoDB:", savedDocument);
     }
-
-
     res.json({
       success: true,
       data: {
@@ -161,8 +145,6 @@ const uploadDocument = async (req, res) => {
         metadata: newDocument.metadata
       },
     });
-
-
   } catch (error) {
     console.error("Upload error:", error);
     if (req.file?.path) fs.unlinkSync(req.file.path);
