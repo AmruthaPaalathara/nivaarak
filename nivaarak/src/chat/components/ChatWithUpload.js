@@ -26,7 +26,7 @@ const fetchDocumentTextFromAPI = async (file) => {
     const formData = new FormData();
     formData.append("file", file); // Correctly append the file
 
-    const response = await axios.post("/api/documents/extract-text", formData, { headers: { "Content-Type": "multipart/form-data" } });
+    const response = await axios.post("/api/chat/documents/extract-text", formData, { headers: { "Content-Type": "multipart/form-data" } });
 
     if (response.data.success) {
       console.log("Extracted Text from Document (via API):", response.data.text);
@@ -150,7 +150,7 @@ const ChatWithUpload = () => {
       
       console.log("Payload being sent to AI:", payload);
   
-      const response = await fetch("http://localhost:3000/api/chat/send", {
+      const response = await fetch("/api/chat/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -236,7 +236,7 @@ const ChatWithUpload = () => {
     }
 
     try {
-      const response = await axios.post("/api/documents/upload", formData, {
+      const response = await axios.post("/api/chat/documents/upload", formData, {
         headers: { "Content-Type": "multipart/form-data" },
         onUploadProgress: (progressEvent) => {
           const percentCompleted = Math.round(
@@ -310,7 +310,7 @@ const ChatWithUpload = () => {
 
       if (uploadedFile && !uploadedFile.extractedText) {
         console.log("Extracting text from document...");
-        const ocrResponse = await axios.post("/api/documents/extract-text", { documentId: uploadedFile.documentId });
+        const ocrResponse = await axios.post("/api/chat/documents/extract-text", { documentId: uploadedFile.documentId });
         extractedText = ocrResponse.data.text || "";
       }
 

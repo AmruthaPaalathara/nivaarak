@@ -44,7 +44,6 @@ if (process.env.NODE_ENV !== "production") {
   console.log("Running in development mode.");
 }
 
-
 // Middleware Setup
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -60,7 +59,6 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
-
 
 // Rate Limiting Setup
 const globalLimiter = rateLimit({
@@ -78,6 +76,9 @@ const transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS,
   },
 });
+console.log('Email user:', process.env.EMAIL_USER);
+console.log('Email pass:', process.env.EMAIL_PASS);
+
 
 
 app.set("trust proxy", 1); // Trust the first proxy in front of your server
@@ -126,6 +127,7 @@ app.post("/send-email", async (req, res) => {
   } catch (error) {
 
     console.error("❌ Error sending email:", error);
+    console.log(error.response);
     res.status(500).json({ success: false, message: "Failed to send email." });
   }
 });

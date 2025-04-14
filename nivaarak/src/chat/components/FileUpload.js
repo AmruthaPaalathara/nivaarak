@@ -5,6 +5,7 @@ import PropTypes from "prop-types";
 import axios from "axios";
 import { toast } from "react-toastify";
 import "../../css/style.css";
+import API from "../../utils/api";
 
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -65,7 +66,7 @@ try {
 
     
       console.log("Starting file upload...");
-      const response = await axios.post("http://localhost:3001/api/documents/upload", formData, {
+      const response = await API.post("/documents/upload", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
