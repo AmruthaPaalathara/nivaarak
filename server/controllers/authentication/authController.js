@@ -5,6 +5,10 @@ const { User, Counter } = require("../../models/authentication/userSchema.js");
 const { validationResult } = require("express-validator");
 const rateLimit = require("express-rate-limit");
 const Session = require("../../models/authentication/sessionSchema.js");
+const verifyRefreshToken = require("../../middleware/verifyRefreshToken");
+const { isTokenRevoked } = require('../../middleware/authenticationMiddleware/authMiddleware');
+const { v4: uuidv4 } = require('uuid');
+
 
 
 // Rate limiting for login and registration (prevents brute-force attacks)
@@ -31,7 +35,6 @@ const getNextSequence = async (sequenceName) => {
 
 exports.registerUser = async (req, res) => {
   try {
-    console.log(" Received Data:", req.body);
     const { first_name, last_name, username, email, phone, password, confirmPassword } = req.body;
 
     // Trim inputs and normalize email
@@ -85,47 +88,36 @@ exports.registerUser = async (req, res) => {
 
 exports.loginUser = async (req, res) => {
   try {
-
     const { username, password } = req.body;
     console.log("Login request received:", { username, password });
-    console.log("Entered Password:", password, typeof password);
-
 
     if (!username  || !password) {
       return res.status(400).json({ success: false, message: "Username and password are required." });
     }
-
     const trimmedUsername = username.trim();
-    console.log("Trimmed Password: ", trimmedUsername);
+    const trimmedPassword = password.trim(); // <-- Make sure you trim password here
     //  Find user in the database
     const user = await User.findOne({ username: trimmedUsername });
-
-    console.log("Entered Password by filtering with username:", password);
-    console.log("Stored Hashed Password by filtering with username:", user.password);
-
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
     //  Compare password with hashed password
     const isMatch = await bcrypt.compare(password, user.password);
-    console.log("Password Match:", isMatch);
     if (!isMatch) {
       return res.status(401).json({ success: false, message: "Invalid password. Try again." });
     }
-
     const tokenPayload = {  userId: user.userId, username: user.username };
     const accessToken = jwt.sign(  tokenPayload, process.env.JWT_SECRET, { expiresIn: "15m" });  // Short-lived
-    const refreshToken = jwt.sign(tokenPayload, process.env.REFRESH_SECRET, { expiresIn: "7d" });  // Long-lived
-
-    console.log("Signing JWT with userId:", user.userId, typeof user.userId);
+    const refreshToken = jwt.sign(tokenPayload, process.env.REFRESH_SECRET, { expiresIn: "30d" });  // Long-lived
     // Storing refresh token in httpOnly cookie (more secure approach):
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",  // Use secure cookies in production
       sameSite: "Strict",  // Prevents CSRF attacks
-      maxAge: 7 * 24 * 60 * 60 * 1000  // 7 days
+      maxAge: 30 * 24 * 60 * 60 * 1000  // 7 days
     });
-
     //  Generate unique session ID
-    const sessionId = crypto.randomBytes(16).toString("hex");
-
+    const sessionId = uuidv4();
     //  Create and store session in MongoDB
     const newSession = new Session({
       sessionId,
@@ -134,18 +126,13 @@ exports.loginUser = async (req, res) => {
       sessionType: "web",
       createdAt: new Date()
     });
-
     await newSession.save();
-
-    console.log("Generated Access Token:", accessToken);
-    console.log("Generated Refresh Token:", refreshToken);
-    console.log("Login successful:", accessToken, sessionId);
-
     //  Return JWT token and session ID to frontend
     return res.status(200).json({
       success: true,
       message: "Login successful",
       userId: user.userId,
+      role: user.role,
       accessToken,   //  send accessToken
       sessionId, //  Include session ID for frontend tracking
     });
@@ -290,18 +277,18 @@ exports.logoutUser = async (req, res) => {
 
 exports.refreshToken = async (req, res) => {
   try {
-    const { refreshToken } = req.body;
-    if (!refreshToken) {
+    const token = req.cookies.refreshToken;
+    if (!token) {
       return res.status(401).json({ message: "Refresh Token required." });
     }
 
-    jwt.verify(refreshToken, process.env.REFRESH_SECRET, async (err, decoded) => {
+    jwt.verify(token, process.env.REFRESH_SECRET, async (err, decoded) => {
       if (err) {
         return res.status(403).json({ success: false, message: "Invalid or expired refresh token." });
       }
 
       // Optional: check if refresh token is revoked (if you store it)
-      const isRevoked = await isTokenRevoked(refreshToken);
+      const isRevoked = await isTokenRevoked(token);
       if (isRevoked) {
         return res.status(403).json({ success: false, message: "Refresh token has been revoked." });
       }
@@ -313,17 +300,50 @@ exports.refreshToken = async (req, res) => {
           { expiresIn: "15m" }
       );
 
+      // Generate new refresh token (for token rotation)
+      const newRefreshToken = jwt.sign(
+          { userId: decoded.userId, role: decoded.role },
+          process.env.REFRESH_SECRET,
+          { expiresIn: "30d" }
+      );
+
+      // Set new refresh token in the HTTP-only cookie
+      res.cookie("refreshToken", newRefreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "Strict",
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 7 days
+      });
+
+      // Respond with the new access token
       return res.status(200).json({
         success: true,
         accessToken: newAccessToken,
       });
     });
 
+
   } catch (error) {
     console.error("Refresh Token Error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
+
+exports.refreshAccessToken = [
+  verifyRefreshToken, // Use the middleware to verify the refresh token from the HTTP-only cookie
+  (req, res) => {
+    const { userId } = req.user; // The user information is available after verifying the refresh token
+
+    // Generate a new access token
+    const newAccessToken = jwt.sign({ userId }, process.env.JWT_ACCESS_SECRET, { expiresIn: '1h' });
+
+    res.status(200).json({
+      success: true,
+      message: 'Access token refreshed successfully',
+      accessToken: newAccessToken,
+    });
+  },
+];
 
 exports.authLimiter = authLimiter;
 

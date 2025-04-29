@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Container, Row, Col, Card, ListGroup, Spinner, Badge, ProgressBar, Button, } from "react-bootstrap";
+import { Container, Row, Col, Card, ListGroup, Spinner, Badge, ProgressBar, Button, OverlayTrigger, Tooltip  } from "react-bootstrap";
 import { useSpeechRecognition } from 'react-speech-recognition';
 import { FaMicrophone, FaMicrophoneSlash, FaVolumeUp } from "react-icons/fa";
 import FileUpload from "./FileUpload.js";
@@ -9,40 +9,47 @@ import { toast } from "react-toastify";
 import { v4 as uuidv4 } from "uuid";
 import "../../css/style.css";
 import SpeechRecognition from "react-speech-recognition";
+import axiosInstance from "../../utils/api";
+import API from "../../utils/api"; // Import the pre-configured axios instance
+
 
 console.log("API URL:", process.env.REACT_APP_API_URL);
 
 console.log(" ChatWithUpload component is rendering...");
 
-const fetchDocumentTextFromAPI = async (file) => {
+const fetchDocumentTextFromAPI = async (documentId) => {
+  const accessToken = localStorage.getItem("accessToken");
 
-  if (!file) {
-    console.error("No file provided for upload.");
-    toast.error("Please upload a file before extracting text.");
-    return;
-}
+  if (!documentId) {
+    toast.error("Invalid document ID for extraction.");
+    console.error(" Document ID missing from upload response!");
+    return "";
+  }
 
   try {
-    const formData = new FormData();
-    formData.append("file", file); // Correctly append the file
+    const extractResponse = await API.post("/documents/extract-text",
+        { customId: documentId },
+        { headers: { "Authorization": `Bearer ${accessToken}` }}
+    );
 
-    const response = await axios.post("/api/chat/documents/extract-text", formData, { headers: { "Content-Type": "multipart/form-data" } });
-
-    if (response.data.success) {
-      console.log("Extracted Text from Document (via API):", response.data.text);
-      return response.data.text;
+    if (extractResponse.data.success) {
+      console.log("Text extracted from document:", extractResponse.data.text);
+      return extractResponse.data.text;
+    } else {
+      toast.error(extractResponse.data.message || "Error extracting text.");
+      console.error("Extraction failed:", extractResponse.data.message);
+      return "";
     }
-    return "";
   } catch (error) {
-    console.error("Error extracting text via API:", error.response ? error.response.data : error.message);
+    console.error("Error extracting text:", error.response?.data || error.message);
+    toast.error("Error extracting text.");
     return "";
   }
 };
 
 // API function to send a message
-
-const ChatWithUpload = () => {
-  const [message, setMessage] = useState(""); //curretn input
+const ChatWithUpload = ({ currentSessionId , onUploadSuccess = () => {} }) => {
+  const [message, setMessage] = useState(""); //current input
   const [uploadedFile, setUploadedFile] = useState(null); // File metadata
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -52,7 +59,12 @@ const ChatWithUpload = () => {
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]); //chat history
   const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState(null);
 
+  const handleRemove = () => {
+    setUploadedFile(null);
+    setUploadProgress(0);
+  };
 
   const {
     transcript, // The transcribed speech text
@@ -107,13 +119,12 @@ const ChatWithUpload = () => {
       toast.error("User ID missing. Please log in again.");
       return;
   }
-  
-  if (!sessionId) {
-    var newSession = uuidv4();
-    setSessionId(newSession);
-  }
-  const session = sessionId || newSession;
-    
+
+    let session = sessionId;
+    if (!sessionId) {
+      session = uuidv4();
+      setSessionId(session);
+    }
     // Generate UUID if no sessionId
     try {
       let context = extractedText || "";
@@ -140,41 +151,34 @@ const ChatWithUpload = () => {
         context, // Updated extracted text
         chatHistory, // Include chat history for AI context
       };
-  
+      console.log("Payload being sent:", payload);
+
       setMessages((prevMessages) => {
         if (prevMessages.length > 0 && prevMessages[prevMessages.length - 1].content === message) {
           return prevMessages; // Prevent duplicate messages
         }
         return [...prevMessages, { role: "user", content: message, timestamp: new Date() }];
       });
-      
       console.log("Payload being sent to AI:", payload);
-  
-      const response = await fetch("/api/chat/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-    });
-          if (!response.ok) {
-            const data = await response.json();
-              throw new Error(data.message || "Failed to get AI response.");
-          }
-          const data = await response.json();
-          console.log("Chat Response:", data);
-  
-      setMessages((prevMessages) => [
-        ...prevMessages,
-        { role: "ai", content: data.reply, timestamp: new Date() }
-      ]);
-  
-      return data;
-    } catch (error) {
-      console.error("Error sending message:", error.response?.data || error.message);
-      toast.error(error.response?.data?.message || "Failed to send message. Please try again.");
-      throw error;
-    }
-  };
 
+        const response = await axiosInstance.post("/chat/send", payload);
+
+        const data = response.data;
+      console.log("AI response:", data); // for debug
+        // handle the data as needed
+
+        setMessages((prevMessages) => [
+          ...prevMessages,
+          { role: "ai", content: data.reply, timestamp: new Date() }
+        ]);
+        return data;
+      } catch (error) {
+        console.error("Error sending message:", error.message);
+        setError("Failed to get AI response.");
+        toast.error("Failed to send message. Please try again.");
+        throw error;
+      }
+    };
 
   useEffect(() => {
     console.log("Document ID updated:", uploadedFile?.documentId);
@@ -182,9 +186,13 @@ const ChatWithUpload = () => {
 
   // Auto-scroll optimization using callback ref
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
+    const timeout = setTimeout(() => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+      }
+    }, 100); // Small delay helps prevent excessive auto-scrolling
+
+    return () => clearTimeout(timeout);
   }, [messages]);
 
   // Debugging: Log uploaded file & messages only in development mode
@@ -214,138 +222,236 @@ const ChatWithUpload = () => {
     toast.error("File upload failed");
   };
 
-  // Handle file upload
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) {
-      toast.error("No file selected.");
-      return;
-  }
-
-    setUploading(true);
-    setUploadProgress(0);
-    console.log("File selected:", file);
-
-
-    const formData = new FormData();
-    formData.append("file", file);
-    const extractedText = await fetchDocumentTextFromAPI(file);
-
-    if (extractedText) {
-        console.log("Text extracted successfully:", extractedText);
-    }
-
-    try {
-      const response = await axios.post("/api/chat/documents/upload", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round(
-            (progressEvent.loaded * 100) / progressEvent.total
-          );
-          setUploadProgress(percentCompleted);
-        },
-      });
-
-      if (response.data.success) {
-        console.log("Upload success:", response.data);
-        setUploadedFile({
-          name: response.data.data.filename,
-          documentId: response.data.data.customId,
-          extractedText: response.data.data.extractedText,
-        });
-        toast.success("File uploaded successfully!");
-
-        // Call onUploadSuccess
-        onUploadSuccess(response.data);
-      } else {
-        throw new Error("Upload failed");
+    // Handle file upload
+    const handleFileUpload = async (file) => {
+      console.log("handleFileUpload triggered");
+      if (!file) {
+        console.error("No file selected or input is missing.");
+        toast.error("No file selected.");
+        return;
       }
-    } catch (error) {
-      console.error("File upload error:", error);
-      toast.error("File upload failed");
-    } finally {
-      setUploading(false);
-      setUploadProgress(0);
-    }
-  };
+      console.log("Selected file:", file);
 
-  // Handle send message
+      const accessToken = localStorage.getItem("accessToken");
+      const userId = localStorage.getItem("userId");
+
+      if (!accessToken || !userId) {
+        toast.error("Unauthorized. Please log in again.");
+        console.error("Missing authentication tokens.");
+        return;
+      }
+
+      setUploading(true);
+      setUploadProgress(0);
+      console.log("File selected:", file);
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("userId", userId);
+
+      try {
+        const response = await axiosInstance.post("/documents/upload", formData, {
+
+          headers: {  "Content-Type": "multipart/form-data",
+            "Authorization": `Bearer ${accessToken}`,
+          },
+          onUploadProgress: (progressEvent) => {
+            const percentCompleted = Math.round(
+                (progressEvent.loaded * 100) / progressEvent.total
+            );
+            setUploadProgress(percentCompleted);
+          },
+        });
+
+        console.log("Upload response:", response.data);
+        console.log("Axios base URL:", axiosInstance.defaults.baseURL);
+        if (response.data.success) {
+          const customId = response.data.data.customId;
+          if (!customId) {
+            console.error("Upload response missing 'customId':", response.data);
+            toast.error("File upload succeeded but document ID is missing. Please try again.");
+            return;
+          }
+          console.log("Upload success:", response.data);
+          setUploadedFile({
+            name: response.data.data.file?.originalname || "Unknown file",
+            documentId: customId,
+            extractedText: response.data.data.extractedText || "",
+          });
+          toast.success("File uploaded successfully!");
+
+         if (typeof onUploadSuccess === "function") {
+            onUploadSuccess(response.data);
+          }
+
+          try {
+            const extractedText = await fetchDocumentTextFromAPI(customId);
+            if (extractedText) {
+              console.log("Text extracted successfully:", extractedText);
+            }
+          } catch (fetchError) {
+            console.error("Error fetching document text:", fetchError);
+            toast.error("Could not extract text from document.");
+          }
+
+        } else {
+          throw new Error("Upload failed");
+        }
+      } catch (error) {
+        console.error("File upload error:", error);
+        toast.error("File upload failed");
+      } finally {
+        setUploading(false);
+        setUploadProgress(0);
+      }
+    };
+
   const handleSendMessage = async (e) => {
     if (isSending) return; // Prevent duplicate messages
     setIsSending(true); // Indicate sending has started
-    
+
     if (e && e.preventDefault) {
       e.preventDefault();
     }
-    if (!message.trim()) return;
-
-    console.log("handleSendMessage triggered");
-    console.log("Message:", message);
-
-    // Optional: Log the current documentId state
-    console.log("Before sending, documentId:", uploadedFile?.documentId);
-
-    console.log("Sending message to backend:", { message, documentId: uploadedFile?.documentId || "No document attached" });
-
-
-    const currentMessage = message;
-    setMessage("");
-    // setMessages((prevMessages) => [...prevMessages, { role: "user", content: currentMessage, timestamp: new Date() }]);
-
-    // // Add user message to chat
-    const userMessage = { role: "user", content: currentMessage, timestamp: new Date() };
-    setMessages((prev) => [...prev, userMessage]);
-    // // const currentMessage = message;
-    // // setMessage("");
 
     try {
+      if (!message.trim()) {
+        toast.error("Message cannot be empty.");
+        return;
+      }
+
+      console.log("handleSendMessage triggered");
+      console.log("Message:", message);
+      console.log("Before sending, documentId:", uploadedFile?.documentId);
+      console.log("Sending message to backend:", { message, documentId: uploadedFile?.documentId || "No document attached" });
+
+      const currentMessage = message;
+      setMessage("");
+
+      //  New code: Archive uploaded document before sending message
+      if (uploadedFile && uploadedFile.documentId && !uploadedFile.isArchived) {
+        try {
+          console.log("Archiving uploaded document...");
+          const accessToken = localStorage.getItem("accessToken");
+
+          await axiosInstance.post("/documents/archive-temp", {
+            customId: uploadedFile.documentId,
+            userId: localStorage.getItem("userId"),
+          }, {
+            headers: {
+              "Authorization": `Bearer ${accessToken}`,
+            },
+          });
+
+          console.log("Document archived successfully!");
+
+          // Update the uploadedFile state to mark it as archived
+          setUploadedFile((prev) => ({ ...prev, isArchived: true }));
+
+        } catch (archiveError) {
+          console.error("Failed to archive document:", archiveError);
+          toast.error("Failed to archive document.");
+        }
+      }
+
+      // Add user message to chat
+      const userMessage = { role: "user", content: currentMessage, timestamp: new Date() };
+      setMessages((prevMessages) => [...prevMessages, userMessage]);
 
       if (!uploadedFile || !uploadedFile.documentId || !uploadedFile.extractedText) {
         toast.warning("Please upload a valid document and wait for processing.");
         return;
       }
 
+      console.log("uploadedFile.documentId:", uploadedFile?.documentId ?? "No document available");
 
       let extractedText = uploadedFile?.extractedText || "";
-
-      if (uploadedFile && !uploadedFile.extractedText) {
-        console.log("Extracting text from document...");
-        const ocrResponse = await axios.post("/api/chat/documents/extract-text", { documentId: uploadedFile.documentId });
-        extractedText = ocrResponse.data.text || "";
+      if (!extractedText && uploadedFile?.documentId) {
+        try {
+          const ocrResponse = await axiosInstance.post("/documents/extract-text",  { customId: uploadedFile?.documentId });
+          extractedText = ocrResponse.data.text || "";
+        } catch (ocrError) {
+          console.error("OCR extraction failed:", ocrError);
+          toast.error("Failed to extract text from document.");
+        }
       }
 
-      if (isSending) return;
-      setIsSending(true);
+      console.log("uploadedFile.documentId", uploadedFile.documentId);
+
+      const tempMessages = [...messages, userMessage];
 
       // Send the message to the backend via our sendMessage API function
-      const chatResponse = await sendMessage(currentMessage, sessionId, setSessionId,messages, setMessages, uploadedFile?.documentId || null, extractedText || "");
+      const chatResponse = await sendMessage(currentMessage, sessionId, setSessionId, tempMessages, setMessages, uploadedFile?.documentId || null, extractedText || "");
+
       console.log("Received chatResponse from backend:", chatResponse);
 
-      // Update chat messages with the AI response, using the correct key from the backend (response.response)
-      const aiResponse = chatResponse?.content || "AI response format is not as expected";
+      // Handle AI response
+      const aiResponse = chatResponse?.message || "AI response format is not as expected";
       if (!chatResponse?.content) {
         console.error("Unexpected response format:", chatResponse);
       }
-      // setMessages((prevMessages) => [
-      //   ...prevMessages,
-      //   { role: "ai", content: aiResponse, timestamp: new Date() }
-      // ]);
+
     } catch (error) {
       console.error("Failed to get AI response:", error);
       const errorMessage = error.response?.data?.error || "Failed to get response";
 
-      // Fallback response if backend fails
-      // const fallbackResponse = await new Promise((resolve) => setTimeout(() => resolve(`This is a fallback response for: "${currentMessage}"`), 1000));
-      setMessages((prevMessages) => [
-        ...prevMessages,
-        { role: "ai", content: errorMessage, timestamp: new Date() },
-      ]);
+      // Add fallback response if backend fails
+      setMessages((prevMessages) => [...prevMessages, { role: "ai", content: errorMessage, timestamp: new Date() }]);
+    } finally {
+      setIsSending(false);
     }
   };
 
-  return (
-    <Container className="chatbot-container mt-5 mb-3">
-      <Row className="justify-content-center">
+  const archiveChatSession = async () => {
+    try {
+      if (!currentSessionId) {
+        console.warn("Skipping archive: No session ID found.");
+        return;
+      }
+
+      const data = { customId: currentSessionId };
+      const response = await axios.post('http://localhost:3001/api/chat/archive', data, { withCredentials: true });
+
+      console.log(response.data);
+    } catch (error) {
+      console.error('Error archiving session:', error);
+    }
+  };
+  useEffect(() => {
+    let timeout;
+
+    const handleVisibilityChange = () => {
+      clearTimeout(timeout);
+      if (document.visibilityState === "hidden" && currentSessionId) {
+        timeout = setTimeout(() => archiveChatSession(), 2000); // Archive only after 2 seconds
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      clearTimeout(timeout);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [currentSessionId]);
+
+
+      useEffect(() => {
+          const handleVisibilityChange = () => {
+              if (document.visibilityState === "hidden") {
+                  archiveChatSession();
+              }
+          };
+
+          document.addEventListener("visibilitychange", handleVisibilityChange);
+
+          return () => {
+              document.removeEventListener("visibilitychange", handleVisibilityChange);
+          };
+      }, [currentSessionId]);
+
+      return (
+    <Container className="chatbot-container mb-3">
+      <Row className="justify-content-center ">
         <Col md={8} lg={6} style={{ width: "90%", color: "black" }}>
           <Card className="chat-card shadow-lg p-3">
             <Card.Body>
@@ -353,55 +459,26 @@ const ChatWithUpload = () => {
 
               {/* File Upload Section */}
               <FileUpload
-                handleFileUpload={handleFileUpload}
-                uploadedFile={uploadedFile}
-                setUploadedFile={setUploadedFile}
-                uploading={uploading}
-                uploadProgress={uploadProgress}
-                onUploadSuccess={(data) => {
-                  console.log("Full Upload Response:", data);
-                  if (!data || !data.data || !data.data.customId) {
-                    console.error("Unexpected response structure:", data);
-                    toast.error("Unexpected response from the server");
-                    return;
-                  }
-                  console.log("Upload success:", data);
-                  setUploadedFile({
-                    name: data.data.filename,
-                    documentId: data.data.customId,
-                    extractedText: data.data.extractedText,
-                  });
-                  toast.success("File uploaded successfully!");
-                }}
-                onUploadError={(error) => {
-                  console.error("Upload error:", error);
-                  toast.error("File upload failed");
-                }}
+                  onFileSelect={handleFileUpload}
+                  uploadedFile={uploadedFile}
+                  uploading={uploading}
+                  uploadProgress={uploadProgress}
+                  onRemove={() => setUploadedFile(null)}
               />
 
-
-              {uploading && (
-                <ProgressBar
-                  now={uploadProgress}
-                  label={`${uploadProgress}%`}
-                  className="mt-2"
-                  striped
-                  animated
-                />
-              )}
 
               {/* Chat Messages Section */}
               <ListGroup className="chat-messages p-2" style={{ maxHeight: "400px", overflowY: "auto" }}>
                 {messages.map((msg, index) => (
                   <ListGroup.Item
-                    key={`${index}-${msg.timestamp ? msg.timestamp.toISOString() : Date.now()}`}
+                      key={msg.id ?? `${uuidv4()}-${index}`}
                     // Use a unique key (e.g., msg.id if available)
                     className={`message ${msg.type}-message`}
                     style={{
                       whiteSpace: "pre-wrap",
+                      alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
                       backgroundColor: msg.role === "user" ? "#DCF8C6" : "#FFFFFF",
-                      marginLeft: msg.role === "user" ? "auto" : "0",
-                      marginRight: msg.role === "user" ? "0" : "auto",
+                      padding: "10px",
                       maxWidth: "80%",
                       borderRadius: "15px",
                       border: "1px solid #e9ecef",
@@ -415,12 +492,13 @@ const ChatWithUpload = () => {
                         {msg.role === "user" ? "You" : "AI"}
                       </Badge>
                       <small className="text-muted">
-                        {new Date(msg.timestamp).toLocaleTimeString([], {
+                        {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], {
                           hour: "2-digit",
                           minute: "2-digit",
                           hour12: true,
-                        })}
+                        }) : "Time unavailable"}
                       </small>
+
                     </div>
 
 
@@ -452,17 +530,11 @@ const ChatWithUpload = () => {
                   sendMessage={handleSendMessage}
                   loading={false}
                 />
-                <Button variant="link" onClick={handleVoiceInput}>
-                  {isRecording ? (
-                    <>
-                      Stop Recording <FaMicrophoneSlash size={24} color="red" />
-                    </>
-                  ) : (
-                    <>
-                      <FaMicrophone size={24} color="green" />
-                    </>
-                  )}
-                </Button>
+                <OverlayTrigger placement="top" overlay={<Tooltip>{isRecording ? "Stop Voice Input" : "Start Voice Input"}</Tooltip>}>
+                  <Button variant="link" onClick={handleVoiceInput}>
+                    {isRecording ? <FaMicrophoneSlash size={24} color="red" /> : <FaMicrophone size={24} color="green" />}
+                  </Button>
+                </OverlayTrigger>
 
               </div>
 
@@ -472,7 +544,7 @@ const ChatWithUpload = () => {
       </Row>
     </Container>
   );
-};
+  };
 
 
 export default ChatWithUpload;

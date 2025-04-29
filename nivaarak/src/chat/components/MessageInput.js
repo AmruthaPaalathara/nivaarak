@@ -32,21 +32,25 @@
     }
   }, []);
 
-  // Handle Enter key submission
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter"&& !e.shiftKey) {
-      // if (e.shiftKey) return; // Allow Shift+Enter for new lines
-      e.preventDefault(); // Prevent new lines on plain Enter
-      handleSendMessage();
-    }
-  };
 
     // Handle send message with validation
     const handleSendMessage = (e) => {
-      if (message.trim()) {
-        sendMessage();
-      }
+        if (message.trim()) {
+            sendMessage(message); // Send message (pass message to function)
+        } else {
+            // Optionally, you could add a toast or error message to inform the user
+            console.log("Message is empty!");
+        }
     };
+
+      // Handle Enter key submission
+      const handleKeyDown = (e) => {
+          if (e.key === "Enter"&& !e.shiftKey) {
+              // if (e.shiftKey) return; // Allow Shift+Enter for new lines
+              e.preventDefault(); // Prevent new lines on plain Enter
+              handleSendMessage();
+          }
+      };
 
     return (
       <InputGroup className="message-input w-100">

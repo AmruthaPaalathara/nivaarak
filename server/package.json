@@ -38,6 +38,5 @@
     "uuidv4": "^6.2.13",
     "winston": "^3.17.0",
     "zxcvbn": "^4.4.2"
-  },
-  "proxy": "http://localhost:3001"
+  }
 }

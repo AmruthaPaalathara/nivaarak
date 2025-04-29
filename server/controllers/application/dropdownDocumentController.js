@@ -8,12 +8,8 @@ const getUserDocumentsByUserId = async (userId) => {
 
 exports.getUserDocuments = async (req, res) => {
   try {
-    console.log("getUserDocuments hit");
-
-    console.log("User ID from token:", req.user?.userId);
 
     const userId = req.user?.userId;
-    console.log("Fetching docs for userId:", userId);
 
     if (!userId) {
       return res.status(401).json({ message: "Unauthorized: User ID missing" });
@@ -28,8 +24,8 @@ exports.getUserDocuments = async (req, res) => {
       "Income Certificate",
       "Domicile Certificate",
       "Caste Certificate",
-      "Marriage Certificate",
-      "Land Records",
+      "Agricultural Certificate",
+      "Non- Creamy Layer",
       "Property Documents",
       "Educational Certificates",
       "Pension Documents",

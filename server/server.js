@@ -10,14 +10,20 @@ const morgan = require("morgan");
 const nodemailer = require("nodemailer")
 const path = require("path")
 const fs = require("fs");
+mongoose.set("debug", true);
 
-const documentRoutes = require("./routes/chatbot/documentRoute.js")
-const authRoutes = require("./routes/authentication/authRoutes.js");
+
+const authRoutes = require("./routes/authentication/authRoutes");
 const certificateRoutes = require("./routes/application/certificateApplicationRoutes.js");
+const emailRoutes = require("./routes/application/emailRoutes");
 const generatePdfRoutes = require("./routes/pdfGeneration/generatePdfRoutes.js");
 const chatbotRoutes = require("./routes/chatbot/chatRoutes.js");
 const isAuthenticated = require("./middleware/authenticationMiddleware.js");
 const { getUserDocuments } = require("./controllers/application/dropdownDocumentController");
+const  documentRouter  = require("./routes/chatbot/documentRoute");
+const priorityApplicationRoutes = require('./routes/application/priorityApplicationRoutes');
+const userRoutes = require("./routes/userDashboard/userRoutes");
+const chartRoutes = require('./routes/userDashboard/charts/chartRoutes');
 
 const requiredEnvVars = [
   "JWT_SECRET",
@@ -32,16 +38,7 @@ const requiredEnvVars = [
 
 const app = express();
 
-// Ensure Required Environment Variables Exist
-for (const envVar of requiredEnvVars) {
-  if (!process.env[envVar]) {
-    console.error(`ERROR: Missing required environment variable: ${envVar}. Exiting...`);
-    process.exit(1);
-  }
-}
-
 if (process.env.NODE_ENV !== "production") {
-  console.log("Running in development mode.");
 }
 
 // Middleware Setup
@@ -52,7 +49,7 @@ app.use(helmet()); // Set security headers
 app.use(morgan("combined")); // Log incoming requests
 
 // CORS Configuration
-const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : ["http://localhost:3000"];
+const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : ["http://localhost:3000", "http://localhost:3001"];
 app.use(cors({
   origin: allowedOrigins,
   credentials: true,
@@ -68,78 +65,38 @@ const globalLimiter = rateLimit({
 });
 app.use(globalLimiter);
 
-// Nodemailer Setup
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
-console.log('Email user:', process.env.EMAIL_USER);
-console.log('Email pass:', process.env.EMAIL_PASS);
-
-
-
 app.set("trust proxy", 1); // Trust the first proxy in front of your server
+
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.originalUrl}`);
+  console.log(`Incoming request: ${req.method} ${req.url}`);
+
+  next();
+});
+
 
 // Routes
 app.use("/api/auth", authRoutes); // Authentication does not require login
 app.use("/api/generate-pdf", isAuthenticated, generatePdfRoutes);
 app.use("/api/certificates", certificateRoutes);
 app.use("/api/chat", chatbotRoutes);
-app.use("/api/documents", documentRoutes.router);
+app.use("/api/documents", documentRouter);
+// Then mount it just like others:
+app.use("/api/email", emailRoutes);
+app.use("/api/pdf", generatePdfRoutes);
+app.use('/api/priority-applications', priorityApplicationRoutes);
+app.use("/api/users", userRoutes);
+app.use('/api/charts', chartRoutes);
 
-app.post("/send-email", async (req, res) => {
-  console.log("📩  /send-email route hit");
-
-  const { email } = req.body;
-  console.log("📬  Target email:", email);
-
-  const fixedPdfPath = path.join(__dirname, "Caste_Certificate.pdf");
-  console.log("📄 Checking if PDF exists at:", fixedPdfPath);
-
-  if (!fs.existsSync(fixedPdfPath)) {
-    console.log("❌  PDF file not found:", fixedPdfPath);
-
-    return res.status(400).json({ error: "PDF file not found on the server." });
-  }
-
-  // Email options
-  const mailOptions = {
-    from: process.env.EMAIL_USER, // Sender email (your Gmail)
-    to: email, // Recipient email
-    subject: "Below is the attached document mentioning the reasons for rejection of the request for the certificate", // Email subject
-    text: "Please find the attached document.", // Email body
-    attachments: [
-      {
-        filename: "Caste_Certificate.pdf", // Use the original file name
-        path: fixedPdfPath, // Path to the uploaded file
-      },
-    ],
-  };
-
-  // Send email
-  try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log("✅ Email sent:", info.response);
-    res.status(200).json({ success: true, message: "Email sent successfully." });
-  } catch (error) {
-
-    console.error("❌ Error sending email:", error);
-    console.log(error.response);
-    res.status(500).json({ success: false, message: "Failed to send email." });
-  }
-});
 
 // Connect to MongoDB
 const connectToMongoDB = async (retries = 5) => {
   while (retries) {
     try {
-      console.log("MongoDB URI:", process.env.MONGODB_URI);
+
       await mongoose.connect(process.env.MONGODB_URI, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
+        // useNewUrlParser: true,
+        // useUnifiedTopology: true,
         serverSelectionTimeoutMS: 5000,
       });
       console.log("Connected to MongoDB");
@@ -160,7 +117,6 @@ connectToMongoDB();
 // Start Server
 const PORT = process.env.PORT || 3001;
 const server = app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
 });
 
 // Graceful Shutdown
@@ -189,4 +145,5 @@ app.use((err, req, res, next) => {
   console.error("Internal Server Error:", err.stack || err.message);
   res.status(500).json({ success: false, error: err.message || "Internal Server Error" });
 });
+
 

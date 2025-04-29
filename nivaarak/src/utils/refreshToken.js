@@ -3,7 +3,7 @@ export const refreshToken = async () => {
         const response = await fetch("http://localhost:3001/api/auth/refresh", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ refreshToken: localStorage.getItem("refreshToken") }),
+            credentials: "include",
         });
 
         const data = await response.json();

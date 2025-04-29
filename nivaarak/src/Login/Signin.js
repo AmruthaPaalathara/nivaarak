@@ -45,16 +45,10 @@ function Signin() {
               );
 
             const data = response.data;
-            if (data.success) {
-                navigate("/"); // or whatever your home route is
-            } else {
-                alert("Login failed: " + data.message);
-            }
-
 
             if (data.accessToken && data.userId) {  //  Ensure userId is received
               localStorage.setItem("accessToken", data.accessToken);
-              localStorage.setItem("refreshToken", data.refreshToken);
+              // localStorage.setItem("refreshToken", data.refreshToken);
               localStorage.setItem("sessionId", data.sessionId);
               localStorage.setItem("userId", data.userId);
 
@@ -90,8 +84,6 @@ function Signin() {
         localStorage.clear();
         navigate("/login");
     };
-
-
 
     return (
         <Container className="signin-container">

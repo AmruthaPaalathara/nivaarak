@@ -1,9 +1,15 @@
 const mongoose = require("mongoose");
 
 const generatePdfSchema = new mongoose.Schema({
-  name: String,
-  documentType: String,
-  status: String,
-});
+  userId: { type: String, required: true, ref:"User" }, //  Custom userId instead of ObjectId
+  name: { type: String, required: true },
+  documentType: { type: String, required: true , ref:"UserDocument" },
+  status: { type: String, required: true, enum: ["pending", "generated", "failed"] },// Limits values
+  pdfContent: { type: String },
+}, { timestamps: true });
+
+//  Indexes for optimized queries
+generatePdfSchema.index({ userId: 1, documentType: 1 });
+
 
 module.exports = mongoose.model("GeneratedPDF", generatePdfSchema);

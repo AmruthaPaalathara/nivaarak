@@ -16,7 +16,7 @@ import ChatWithUpload from "./chat/components/ChatWithUpload";
 import EmailForm from "./certificateApplication/EmailForm.js";
 import Profile from "./dashboard/Profile.js";
 import { useAuth } from "./contexts/AuthContext";
-
+import { toast } from 'react-toastify';
 
 //  Keep only one `App` function
 const HomePage = () => (
@@ -25,6 +25,22 @@ const HomePage = () => (
         <About id="about-section"/>
     </>
 );
+const handleUploadSuccess = (data) => {
+    console.log("Upload successful:", data);
+
+    // Optional: Show a toast
+    if (data?.data?.file?.originalname) {
+        toast.success(`Uploaded: ${data.data.file.originalname}`);
+    }
+
+    // Optional: Log extracted text (if you're debugging)
+    if (data?.data?.extractedText) {
+        console.log("Extracted Text:", data.data.extractedText);
+    }
+
+    // You can add more logic later (e.g., update state, trigger chat, etc.)
+};
+
 
   const AppContent = () => {
     const {isAuthenticated} = useAuth();
@@ -42,7 +58,7 @@ const HomePage = () => (
                     <Route path="/signin" element={<Signin />} />
                   {/* other nav items */}
 
-                  <Route path="/chat" element={isAuthenticated ? <ChatWithUpload/> : <Navigate to="/signin"/>}/>
+                  <Route path="/chat" element={isAuthenticated ? <ChatWithUpload onUploadSuccess={handleUploadSuccess} /> : <Navigate to="/signin" />} />
                     <Route path="/application" element={<ApplicationForm />} />
                     <Route path="/profile" element={<Profile />} />
                     <Route path="*" element={<Navigate to="/"/>}/>

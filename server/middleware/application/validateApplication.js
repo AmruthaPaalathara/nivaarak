@@ -2,16 +2,16 @@ const { body, validationResult } = require("express-validator");
 
 // Predefined list of allowed document types
 const allowedDocumentTypes = [
-  "Birth Certificate",
-  "Income Certificate",
-  "Domicile Certificate",
-  "Caste Certificate",
-  "Marriage Certificate",
-  "Land Records",
-  "Property Documents",
-  "Educational Certificates",
-  "Pension Documents",
-  "Other",
+    "Birth Certificate",
+    "Income Certificate",
+    "Domicile Certificate",
+    "Caste Certificate",
+    "Agricultural Certificate",
+    "Non- Creamy Layer",
+    "Property Documents",
+    "Educational Certificates",
+    "Pension Documents",
+    "Other",
 ];
 
 const validateApplicationForm = [

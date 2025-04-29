@@ -48,7 +48,7 @@ const certificateApplicationSchema = new mongoose.Schema(
     },
 
     documentType: {
-      type: String,
+        type: mongoose.Schema.Types.ObjectId,
       ref: "UserDocument", // Reference to UserDocument schema
       required: true,
     },

@@ -11,9 +11,27 @@ export function AuthProvider({ children }) {
 
   // Check for an existing token on initial load
   useEffect(() => {
-    const token = localStorage.getItem("accessToken") || sessionStorage.getItem("accessToken");
-    if (!token) {
-      navigate("/signin"); // or hide the application form
+    const token = localStorage.getItem("accessToken") ;
+    if (token) {
+      setIsAuthenticated(true);
+    } else {
+      // Try to refresh token using the refresh cookie
+      fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/auth/refresh-token`, {
+        method: "POST",
+        credentials: "include", // This sends cookies (like refreshToken)
+      })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.accessToken) {
+              localStorage.setItem("accessToken", data.accessToken); // Or sessionStorage based on preference
+              setIsAuthenticated(true);
+            } else {
+              navigate("/signin");
+            }
+          })
+          .catch(() => {
+            navigate("/signin");
+          });
     }
   }, []);
 
@@ -28,10 +46,21 @@ export function AuthProvider({ children }) {
   };
 
   // Logout function
-  const logout = () => {
+  const logout = async () => {
+
+    try {
+      await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+
     setIsAuthenticated(false);
     localStorage.removeItem("accessToken"); // Clear token from localStorage
     sessionStorage.removeItem("accessToken"); // Clear token from sessionStorage
+    navigate("/signin");
   };
 
   // Value to be provided by the context

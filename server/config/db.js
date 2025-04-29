@@ -4,10 +4,10 @@ const mongoose = require("mongoose");
 const connectToMongoDB = async () => {
 
     try {
-      console.log("MongoDB URI:", process.env.MONGODB_URI);
+
       await mongoose.connect(process.env.MONGODB_URI, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
+        // useNewUrlParser: true,
+        // useUnifiedTopology: true,
         serverSelectionTimeoutMS: 15000,
         socketTimeoutMS: 45000,
       });

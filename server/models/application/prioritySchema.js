@@ -1,4 +1,6 @@
-const mongoose = require("mongoose");
+// server/models/applicationModel.js
+
+const mongoose = require('mongoose');
 
 const applicationSchema = new mongoose.Schema({
     userId: { type: Number, required: true },
@@ -6,7 +8,8 @@ const applicationSchema = new mongoose.Schema({
     priority: { type: Number, required: true },
     department: { type: String, required: true },
     status: { type: String, default: "Pending" },
+    isEmergency: { type: Boolean, default: false },
     timestamp: { type: Date, default: Date.now }
 });
 
-module.exports = mongoose.model("Priority", applicationSchema);
+module.exports = mongoose.model('Priority', applicationSchema);
