@@ -1,7 +1,7 @@
 const fs = require('fs'); // Add this line to import the fs module
 const pdfParse = require("pdf-parse");
 
-const extractTextFromPDF = async (filePath) => {
+const extractTextFromPDF  = async (filePath) => {
   try {
     const dataBuffer = await fs.promises.readFile(filePath);  // Asynchronous file reading
     const data = await pdfParse(dataBuffer);

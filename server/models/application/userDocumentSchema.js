@@ -4,7 +4,11 @@ const { User } = require("../authentication/userSchema")
 const userDocumentSchema = new mongoose.Schema({
   userId: { type: Number, ref: "User", required: true },
   documentType: { type: String, required: true },
-  files: { type: [String], required: true },
+  files: {
+    type: Map,
+    of: [String],
+    required: true
+  },
   submittedAt: { type: Date, default: Date.now }
 });
 

@@ -13,6 +13,7 @@ export const authFetch = async (url, options = {}) => {
     let response = await fetch(url, {
         ...options,
         headers,
+        credentials: "include",
     });
 
     if (response.status === 401) {
@@ -33,13 +34,9 @@ export const authFetch = async (url, options = {}) => {
             });
         } else {
             // Logout if refresh also fails
-            localStorage.removeItem("accessToken");
-            localStorage.removeItem("refreshToken");
-            localStorage.removeItem("userId");
-            localStorage.removeItem("sessionId");
+            localStorage.clear(); // clear all related tokens
             window.location.href = "/login";
         }
     }
-
     return response;
 };

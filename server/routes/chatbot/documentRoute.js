@@ -1,14 +1,16 @@
 //importing required libraries
 const express = require("express"); //used to create API routes
 const multer = require("multer"); //middleware for handling file uploads
-const { uploadDocument, extractText, getDocuments, getDocumentById } = require("../../controllers/chatbot/documentController.js");
+const { uploadDocument, extractText, getDocuments, getDocumentById, archiveTempDocument  } = require("../../controllers/chatbot/documentController.js");
 const fs = require('fs'); // Add this line to import the fs module
 const path = require('path');  // Import the 'path' module
 const { v4: uuidv4 } = require("uuid");
 const { extractTextFromPDF } = require("../../utils/pdfExtractor");
-
 const router = express.Router();
-const uploadFolder = path.join(__dirname, "../../uploads");
+const uploadFolder = path.join(__dirname, "../../uploads/chatbot/");
+const { chatbotUpload, handleUploadErrors } = require("../../middleware/multerConfigs");
+
+const isAuthenticated = require("../../middleware/authenticationMiddleware");
 
 // Ensure the upload folder exists
 fs.mkdirSync(uploadFolder, { recursive: true });
@@ -73,28 +75,32 @@ const handleMulterErrors = (err, req, res, next) => {
 router.use(handleMulterErrors);
 
 /**
- * @route   POST /api/documents/upload
+ * @route   POST /api/chat/documents/upload
  * @desc    Upload a PDF document (No authentication Required)
- * @access  Public
+ * @access  Private (authentication is required)
  */
-router.post("/upload", upload.single("file"), handleMulterErrors, validateFileType, async (req, res) => { //only 1 file at a time can be uploaded
+router.post("/upload",isAuthenticated,  chatbotUpload.single("file"), handleMulterErrors, validateFileType, async (req, res) => { //only 1 file at a time can be uploaded
   console.log("Received upload request:", req.body);
+
   if (!req.body.userId) {
     console.error("User ID is missing. Authentication issue?");
     return res.status(401).json({ error: "Unauthorized: Missing User ID" });
   }
-
-  console.log("Received file:", req.file);
-
   if (!req.file) {
-    return res.status(400).json({ error: "No file uploaded" });
+    console.error("File upload missing or failed.");
+    return res.status(400).json({ error: "File upload failed or no file received." });
   }
+  console.log("Received file:", req.file);
 
     console.log("File uploaded successfully:", req.file);
 try {
     const documentId = uuidv4(); // Generate a unique ID
-    const extractedText = await extractTextFromPDF(req.file.path); // Extract text from PDF
+  const extractedText = await extractTextFromPDF(req.file.path);
+  if (!extractedText || extractedText.trim() === "") {
+    console.warn("No text extracted from document.");
+  }
 
+  console.log("Document ID updated:", documentId);
     return res.json({
       success: true,
       message: "File uploaded successfully",
@@ -112,25 +118,27 @@ try {
 });
 
 /**
- * @route   GET /api/documents/
- * @desc    Fetch uploaded documents for the authenticated user (No authentication Required)
- * @access  Public
+ * @route   GET /api/chat/documents/
+ * @desc    Fetch uploaded documents for the authenticated user (authentication Required)
+ * @access  Private (authentication is required)
  */
-router.get("/", getDocuments);
+router.get("/", isAuthenticated, getDocuments);
 
 /**
- * @route   GET /api/documents/:documentId
+ * @route   GET /api/chat/documents/:documentId
  * @desc    Get a document by ID
- * @access  Public
+ * @access  Private (authentication is required)
  */
-router.get("/:documentId", getDocumentById);
+router.get("/:documentId", isAuthenticated, getDocumentById);
 
 /**
  * @route   POST /api/documents/extract-text
  * @desc    Extract text from an uploaded document
- * @access  Public
+ * @access  Private (authentication is required)
  */
-router.post("/extract-text", extractText);
+router.post("/extract-text", isAuthenticated, extractText);
 
+router.post("/archive-temp", archiveTempDocument);
 
-module.exports = { router, upload };
+module.exports = router;
+

@@ -51,7 +51,7 @@ const execWithoutTimeout = (command) => {
 
 
 // Extract text from PDF using Python script
-const extractTextFromPdf = async (pdfPath) => {
+const extractDetailsMiddleware  = async (pdfPath) => {
   try {
     validatePdfPath(pdfPath);
     const scriptPath = path.join(__dirname, "../../extracting/process_pdf.py");
@@ -61,11 +61,12 @@ const extractTextFromPdf = async (pdfPath) => {
     const result = await execWithoutTimeout(command );
 
     if (!result || !result.text) {
-      throw new Error("No text extracted from the document.");
+        logStep("Extract Text", "No text extracted from the document.");
+        return ""; // Gracefully return empty string instead of throwing
     }
 
     logStep("Extract Text", "Text extraction successful");
-    return result;
+    return result.text;
   } catch (error) {
     logStep("Extract Text", `Error: ${error.message}`, "error");
     throw new Error(`Text extraction failed: ${error.message}`);
@@ -96,11 +97,26 @@ const callGroqAPI = async (prompt) => {
       return response.data.choices[0].message.content.trim();
     } catch (error) {
       logStep("Groq API", `API request failed: ${error.message}`, "error");
-      return null;
+      return "";
 
     }
   };
 
+const extractTextFromPDF = async (filePath) => {
+  try {
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`File not found: ${filePath}`);
+    }
+
+    const dataBuffer = await fs.promises.readFile(filePath);
+    const data = await pdfParse(dataBuffer);
+
+    return data.text ? data.text.trim() : "No text found in PDF.";
+  } catch (error) {
+    console.error(`Failed to extract text from PDF: ${error.message}`);
+    return ""; // Return an empty string instead of null
+  }
+};
 
 const processLargePDF = async (filePath) => {
   try {
@@ -108,18 +124,17 @@ const processLargePDF = async (filePath) => {
     const data = await pdfParse(pdfBuffer);
 
     // Handle large PDFs by splitting them into chunks
-    const textChunks = data.text.match(/[\s\S]{1,5000}/g) || [];
+    const textChunks = data.text ? data.text.match(/[\s\S]{1,5000}/g) || [""] : [""];
 
     console.log(`PDF split into ${textChunks.length} chunks`);
 
-    const responses = await Promise.allSettled(textChunks.map(chunk => callGroqAPI(chunk)));
+    const responses = await Promise.allSettled(textChunks.map((chunk) => callGroqAPI(chunk)));
     return responses.map(res => res.status === "fulfilled" ? res.value : "").join("\n");
   } catch (error) {
     logStep("Process PDF", `Error: ${error.message}`, "error");
     throw new Error("PDF processing failed");
   }
 };
-
 
 // Extract details dynamically using Groq LLaMA 3 API
 const extractDetailsWithGroq = async (text) => {
@@ -139,7 +154,7 @@ const processPdf = async (pdfPath) => {
     logStep("Process PDF", `Processing PDF: ${pdfPath}`);
 
     // Step 1: Extract text using Python
-    const extractedText = await extractTextFromPdf(pdfPath);
+    const extractedText = await extractTextFromPDF(pdfPath);
     if (!extractedText || !extractedText.text) {
       throw new Error("No text extracted from the document.");
     }
@@ -183,4 +198,4 @@ try {
   }
 };
 
-module.exports = { processPdf, processLargePDF  };
+module.exports = { processPdf, processLargePDF, extractDetailsMiddleware };

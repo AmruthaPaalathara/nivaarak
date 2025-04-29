@@ -4,24 +4,12 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import Container from "react-bootstrap/Container";
 import { Navbar, Nav, NavDropdown, Button } from "react-bootstrap";
 import "../css/style.css";
-import PrintableContent from "../chat/components/generatedPdfContent"; 
-import { useReactToPrint } from "react-to-print";
-import GeneratePDF from "../chat/components/generatePdf";
 
 
 function Header() {
   const location = useLocation();
   const navigate = useNavigate();
   const token = localStorage.getItem("accessToken");
-
-  const componentRef = useRef();
-
-  const handlePrint = useReactToPrint({
-    content: () => componentRef.current,
-    documentTitle: "Certificate Details",
-    onAfterPrint: () => console.log("PDF printed successfully!"),
-    onPrintError: (error) => console.error("Print error:", error),
-  });
 
   const handleAboutClick = (e) => {
     e.preventDefault();
@@ -37,7 +25,7 @@ function Header() {
 
   const handleLogout = (e) => {
     e.preventDefault();
-    localStorage.removeItem("accessToken"); // Remove token on logout
+    localStorage .removeItem("accessToken"); // Remove token on logout
     sessionStorage.removeItem("token");
     navigate("/signin"); // Redirect to login page
   };
@@ -73,16 +61,7 @@ function Header() {
         </Navbar.Collapse>
       </Container>
 
-      {/* Hidden content to be printed */}
-      <div style={{ display: "none" }}>
-        <PrintableContent ref={componentRef} documentData={{
-          documentType: "Sample Document",
-          benefits: "Some benefits of this document...",
-          eligibility: "Eligibility requirements...",
-          rejectionReason: "Possible reasons for rejection...",
-          resubmission: "How to resubmit if needed...",
-        }} />
-      </div>
+
     </Navbar>
   );
 }

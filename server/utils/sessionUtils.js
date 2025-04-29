@@ -4,7 +4,7 @@ const crypto = require("crypto");
 // Create a new session
 const createSession = async (userId, deviceInfo, ipAddress) => {
   const session = new Session({
-    sessionId: crypto.randomBytes(16).toString("hex"),
+    sessionId: uuidv4(),
     userId,
     deviceInfo,
     ipAddress,

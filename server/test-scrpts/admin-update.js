@@ -1,0 +1,15 @@
+const axios = require('axios');
+
+async function updateStatus() {
+    try {
+        const appId = '681090cfb1f8a0e77e785373'; // Replace with actual ID from get-all.js
+        const res = await axios.put(`http://localhost:3001/api/priority-applications/update-status/${appId}`, {
+            status: 'Approved'
+        });
+        console.log('✅ Status Updated:', res.data);
+    } catch (err) {
+        console.error('❌ Error updating status:', err.message);
+    }
+}
+
+updateStatus();

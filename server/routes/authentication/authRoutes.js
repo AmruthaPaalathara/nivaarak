@@ -14,7 +14,13 @@ router.post("/register", authLimiter,validateRegistration, authController.regist
 
 
 // User Login
-router.post("/login", authLimiter, loginLimiter, validateLogin, authController.loginUser);
+router.post("/login", (req, res, next) => {
+
+    next(); // continue to controller
+}, authLimiter, loginLimiter, validateLogin, authController.loginUser);
+
+// POST /auth/refresh-token
+router.post("/refresh-token", authController.refreshToken);
 
 // Verify Username for Forgot Password
 router.post("/verify-username", authLimiter, authController.verifyUsername);
@@ -30,6 +36,11 @@ router.get("/profile", authenticateJWT(), authLimiter, authController.getUserPro
 
 // Logout User (Protected Route)
 router.post("/logout", authenticateJWT(),authLimiter, authController.logoutUser);
+
+router.get("/test", (req, res) => {
+    res.send("Auth route works!");
+});
+
 
 
 module.exports = router;

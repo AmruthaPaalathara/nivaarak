@@ -1,5 +1,3 @@
-/* handles chat messages, fetching document context, calling an AI model, archieiving chat history */
-
 //importing necessary modules
 const express = require("express");
 require("dotenv").config(); //loads envirinment variable
@@ -13,8 +11,7 @@ const Chat = require("../../models/chatbot/chatSchema.js");
 const router = express.Router();
 const ChatArchive = require("../../models/chatbot/chatArchive.js");
 const User = require("../../models/authentication/userSchema.js");
-
-
+const redisClient = require("../../config/redisConfig");
 
 //ensuring that the message is not empty or whitespace
 const validateChatMessage = [
@@ -67,25 +64,31 @@ const summarizeText = async (text) => {
   }
 };
 
-
-
-// Fetch Document Context
-// validating documentId is a valid objectId
+// Fetch Document Context and validating documentId is a valid objectId
 const fetchDocumentContext = async (documentId, userQuery) => {
   try {
-    if (!documentId || !mongoose.Types.ObjectId.isValid(documentId)) { 
+    if (!documentId || typeof documentId !== "string") {
       throw new Error("Invalid document ID");
     }
-    
 
-    //Finds the document in MongoDB using Document.findById(). and extracts only the texts
-    const doc = await Document.findById(documentId).select("extractedText userId customId");
+    const doc = await Document.findOne({ customId: documentId })
+        .select("extractedText userId customId status"); // Include status
+
     if (!doc) {
       throw new Error("Document not found");
     }
 
     console.log("Fetched document for context:", doc);
     let fullText = doc.extractedText || "";
+
+    // If the document is temporary, process it (extract text) and save it permanently
+    if (doc.status === "temporary" && fullText === "") {
+      // Trigger text extraction and saving logic here
+      fullText = await extractTextFromDocument(doc); // Assume this function processes and returns text
+      doc.extractedText = fullText;
+      doc.status = "permanent"; // Change status to permanent
+      await doc.save(); // Save it permanently
+    }
     
     if (!userQuery || !userQuery.trim()) {
       return fullText.substring(0, 1000);
@@ -113,6 +116,45 @@ const fetchDocumentContext = async (documentId, userQuery) => {
     return "";
   }
 };
+
+const extractTextFromDocument = async (doc) => {
+  try {
+    if (!doc.filePath) {
+      throw new Error("File path not provided");
+    }
+
+    const fileType = doc.mimeType; // Assuming 'mimeType' field in doc contains the document type
+    let extractedText = "";
+
+    // For PDF files, use a library like pdf-parse
+    if (fileType === "application/pdf") {
+      const pdfParse = require("pdf-parse");
+      const fs = require("fs");
+
+      const buffer = fs.readFileSync(doc.filePath);
+      const pdfData = await pdfParse(buffer);
+      extractedText = pdfData.text;
+
+    }
+    // For Image documents (e.g., scanned PDFs), use an OCR tool like Tesseract.js
+    else if (fileType.startsWith("image/")) {
+      const Tesseract = require("tesseract.js");
+
+      const result = await Tesseract.recognize(doc.filePath, "eng", {
+        logger: (m) => console.log(m), // Optional logger for progress
+      });
+
+      extractedText = result.data.text;
+    }
+    // Add additional logic for other file types if needed
+
+    return extractedText;
+  } catch (error) {
+    console.error("Text extraction failed:", error.message);
+    return "";
+  }
+};
+
 
 // Call AI Model
 const callAIModel = async (contextSnippet, userQuery) => {
@@ -160,11 +202,10 @@ Answer:
     return response.data.choices?.[0]?.message?.content || "I'm sorry, I couldn't generate a response.";
 
   } catch (error) {
-    console.error("AI Model Error:", error.message);
+    console.error("AI Model Error:", error.response?.status, error.response?.data || error.message);
     throw error;
   }
 };
-
 
 // Process Chat Message
 const handleChatMessage = async (req, res) => {
@@ -187,7 +228,7 @@ const handleChatMessage = async (req, res) => {
 
     //extracts msg,sessionId,documentId from req.bosy
     let { message, sessionId, documentId } = req.body;
-    sessionId = sessionId ? String(sessionId) : new mongoose.Types.ObjectId().toString();
+    sessionId = sessionId || uuidv4();
     console.log("Using sessionId:", sessionId);
 
 
@@ -212,13 +253,17 @@ const handleChatMessage = async (req, res) => {
   }
 };
 
+const findRelevantText = (query, extractedText) => {
+  const sentences = extractedText.split(". ");
+  const cleanedQuery = query.toLowerCase().trim();
+
+  return sentences.find((sentence) => sentence.toLowerCase().includes(cleanedQuery)) || "No relevant information found.";
+};
 
 const sendMessage = async (message, sessionId, documentId, userId) => {
   // Use provided sessionId or generate a new one using UUID
   const session = sessionId ? String(sessionId) : uuidv4();
-  console.log("Received request:", req.body);
-
-  console.log(" Sending message:", message);
+  console.log(" Received message:", message);
   console.log(" Session ID:", session);
   console.log(" Document ID:", documentId || "No document attached");
   
@@ -230,73 +275,95 @@ const sendMessage = async (message, sessionId, documentId, userId) => {
   try {
     let context = "";
     if (documentId) {
-      // Fetch the document's extracted text from the API
-      context = await fetchDocumentContext(documentId, message);
-      console.log(" Extracted Document Context:", context.substring(0, 200)); // Log first 200 chars
-    }
-    // Build the payload – note that the backend may or may not use the context field
-    const payload = {
-      userId,
-      message,
-      sessionId: session,
-      documentId: documentId || null,
-      context, // This field is optional; your backend can decide how to use it
-    };
-    console.log("Payload being sent to AI:", payload);
 
-    const response = await axios.post(
-      "http://localhost:3001/api/chat/send",
-      payload,
-      { headers: { "Content-Type": "application/json" } }
-    );
-    console.log("Chat Response:", response.data);
-    return response.data;
+      // Fetch the document's extracted text from the cache or database
+      let document = await Document.findOne({ customId: documentId });
+
+      if (!document) {
+        // If the document doesn't exist, create a new record in the document schema
+        const extractedData = await redisClient.get(`extracted_document:${documentId}`);
+        if (extractedData) {
+          document = new Document({
+            customId: documentId,
+            userId,
+            extractedText: JSON.parse(extractedData).extractedText,
+            status: "pending", // Status can be set as pending initially or processed later
+          });
+          await document.save();
+        } else {
+          console.error("No extracted data found for the document ID.");
+          throw new Error("Document not found in cache.");
+        }
+      }
+
+      // Fetch context (extracted text) from the document
+      context = document.extractedText || "";
+      console.log("Extracted Document Context:", context.substring(0, 200)); // Log first 200 chars
+    }
+
+    // Save the chat interaction
+    let chat = await Chat.findOne({ userId, sessionId });
+
+    if (!chat) {
+      chat = new Chat({
+        sessionId,
+        userId,
+        documentId: document ? document._id : null,
+        messages: [{ role: "user", content: message }],
+      });
+      await chat.save();
+    }
+
+    // Extract only relevant text from document if present
+    let relevantText = context ? findRelevantText(message, context) : "No relevant information found.";
+
+    const aiPrompt = context ? `Document Content: ${relevantText}\n\nUser Query: ${message}` : message;
+
+    // Fetch AI Response
+    let aiResponse;
+    try {
+      // If you have the document context (extractedText), you can pass it here
+      const contextSnippet = document.extractedText;  // Assuming you fetched the document's extracted text
+      const userQuery = message;  // The user query (message)
+
+      // Call the AI model with both parameters
+      aiResponse = await callAIModel(contextSnippet, userQuery);
+      console.log("AI Response:", aiResponse);
+    } catch (aiError) {
+      console.error("AI Service Error:", aiError.message);
+      return { error: "Failed to get AI response." };
+    }
+
+
+    // Save the AI's response in the chat log
+    chat.messages.push({ role: "user", content: message });
+    chat.messages.push({ role: "ai", content: aiResponse });
+    await chat.save();
+
+    return { success: true, message: aiResponse, sessionId, chat };
   } catch (error) {
-    console.error("Error sending message:", error);
-    throw error;
+    console.error("Chatbot Error:", error.stack || error.message);
+    return { error: "Internal Server Error" };
   }
 };
-
 const archiveChat = async (req, res) => {
-  const { sessionId, messages, documentId } = req.body;
-
-  const userId = req.user?.id; // Ensure user authentication is checked
-    // Ensure user is logged in
-    if (!userId || isNaN(userId)) {
-      return res.status(401).json({ success: false, message: "Unauthorized: Invalid userId" });
-    }
-
-    const userExists = await User.findOne({ userId });
-    if (!userExists) {
-      return res.status(401).json({ success: false, message: "Unauthorized: User does not exist" });
-    }
-    
-  // Input validation
-  if (!sessionId || !messages || !Array.isArray(messages)) { //checks whether messages is an array or not
-    return res.status(400).json({
-      success: false,
-      message: "sessionId and messages (array) are required",
-    });
-  }
-
   try {
-    //  Check if chat session is already archived
-    const existingArchive = await ChatArchive.findOne({ sessionId });
-    if (existingArchive) {
-      return res.status(400).json({
-        success: false,
-        message: "Chat session is already archived", //prevents duplicate archieves
-      });
+    const { sessionId, userId, documentId } = req.body;
+
+    // Fetch the chat session by sessionId
+    const chatSession = await Chat.findOne({ sessionId });
+    if (!chatSession) {
+      return res.status(404).json({ success: false, message: "Chat session not found." });
     }
 
-    //  Filter out empty messages
-    const cleanedMessages = messages
-      .filter(msg => msg && typeof msg === "object" && msg.content && msg.content.trim().length > 0)
-      .map(msg => ({
-        role: msg.role === "ai" ? "ai" : "user", 
-        message: msg.content.trim(),
-        timestamp: msg.timestamp || new Date(),
-      }));
+    // Filter out empty messages
+    const cleanedMessages = chatSession.messages
+        .filter(msg => msg && typeof msg === "object" && msg.content && msg.content.trim().length > 0)
+        .map(msg => ({
+          role: msg.role === "ai" ? "ai" : "user",
+          message: msg.content.trim(),
+          timestamp: msg.timestamp || new Date(),
+        }));
 
     if (cleanedMessages.length === 0) {
       return res.status(400).json({
@@ -308,7 +375,7 @@ const archiveChat = async (req, res) => {
     // Check if documentId is valid (if provided)
     let linkedDocument = null;
     if (documentId) {
-      linkedDocument = await Document.findOne( {customId: documentId });
+      linkedDocument = await Document.findOne({ customId: documentId });
       if (!linkedDocument) {
         return res.status(404).json({ error: "Document not found." });
       }
@@ -316,21 +383,25 @@ const archiveChat = async (req, res) => {
 
     // Archive previous active chats of the user
     await ChatArchive.updateMany(
-      { user: userId, status: "active" },
-      { status: "archived", archivedAt: new Date() }
+        { userId, status: "active" },
+        { status: "archived", archivedAt: new Date() }
     );
-    
 
-    //  Create new chat archive
+    // Create a new chat archive entry
     const archive = new ChatArchive({
-      user: userId, //  Associate with user
+      userId, // Associate with user
       sessionId,
-      chatHistory: cleanedMessages, //  Ensure correct field name
+      chatHistory: cleanedMessages, // Ensure correct field name
       documentId: linkedDocument ? linkedDocument._id : null,
       status: "archived",
       archivedAt: new Date(),
     });
-    chat.status = "archived";
+
+    // Set chat session status to archived
+    chatSession.status = "archived";
+    await chatSession.save();
+
+    // Save the archive
     await archive.save();
 
     res.status(200).json({ success: true, data: archive });
@@ -345,4 +416,4 @@ const archiveChat = async (req, res) => {
 };
 
 
-module.exports = { handleChatMessage, fetchDocumentContext, callAIModel, sendMessage, archiveChat };
+module.exports = { handleChatMessage, fetchDocumentContext, callAIModel, sendMessage, archiveChat,  findRelevantText};

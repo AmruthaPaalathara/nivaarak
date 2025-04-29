@@ -11,11 +11,8 @@ const isAuthenticated = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log("Decoded token:", decoded);
-
 
     const userId = parseInt(decoded.userId);
-    console.log("Searching for user with userId:", userId);
 
     if (isNaN(userId)) {
       return res.status(400).json({ success: false, error: "Invalid userId in token" });
@@ -29,7 +26,7 @@ const isAuthenticated = async (req, res, next) => {
       return res.status(401).json({ message: "Invalid token" });
     }
 
-    console.log("User FOUND:", user.username);
+
 
     req.user = {
       userId: user.userId, //  This gets attached

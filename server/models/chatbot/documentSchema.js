@@ -12,7 +12,8 @@ const documentSchema = new mongoose.Schema( //creates documentSchema that define
       type: String,
       trim: true,
     },
-    extractedText: { type: String, trim: true, default:"" }, //stores extrtacted text from the file.
+
+      extractedText: { type: String, trim: true, default:"" }, //stores extrtacted text from the file.
     status: { //represents the current status of the document
       type: String, //storeed as string
       enum: ["uploaded", "processing", "completed", "failed", "archived"],
@@ -25,9 +26,10 @@ const documentSchema = new mongoose.Schema( //creates documentSchema that define
     },
     checksum: { type: String, unique: true, sparse: true },
   },
-  { timestamps: true } // Automatically tracks document creation & updates
-
+    { timestamps: true } // Automatically tracks `createdAt` and `updatedAt`
 );
+
+
 
 // Add indexes
 documentSchema.index({ createdAt: -1 }); // Faster retrieval of recent documents
@@ -69,13 +71,17 @@ documentSchema.pre("save", async function (next) { //it is used to validate data
 
 
 //  Archive instead of deleting
-documentSchema.methods.archive = function () {
-  if (this.status === "archived") {
-    return Promise.resolve(this);
-  }
-  this.status = "archived";
-  return this.save();
+documentSchema.methods.archive = async function () {
+    if (this.status !== "archived") {
+        this.status = "archived";
+        this.updatedAt = Date.now(); // Update timestamp
+        await this.save();
+    }
+    return this;
 };
+
+
+
 
 // Virtual field for file size in KB (rounded to 2 decimals)
 documentSchema.virtual("fileSizeKB").get(function () {

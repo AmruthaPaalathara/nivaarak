@@ -24,7 +24,7 @@ html {
   text-decoration: none;
   color: rgb(19, 9, 2);
   font-size: 20px;
-  font-style: bold italic;
+  font-style: italic;
   font-family: "Inter", sans-serif;
   font-optical-sizing: auto;
   font-weight: 700;
@@ -44,7 +44,7 @@ html {
 .navbar-link:hover {
   color: rgb(75, 30, 0);
   text-decoration: none;
-  background-color: tertiary;
+  /*background-color: tertiary;*/
 }
 
 /*carrousel section*/
@@ -224,7 +224,7 @@ html {
 }
 
 .button:hover {
-  background-color: #0056b3;
+  background-color: #6c757d;
 }
 
 .button:disabled {
@@ -390,7 +390,7 @@ html {
 .message-textarea:focus {
   border-color: #80bdff;
   box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
-} */ */
+} */
 
 /* .btn-primary {
   border-radius: 10px;
@@ -404,7 +404,7 @@ html {
   outline: none;
   resize: none;
   padding: 10px;
-  border-radius: 20px; */ */
+  border-radius: 20px; */
   /* font-size: 16px;
   min-height: 40px;
   max-height: 100px;
@@ -420,7 +420,7 @@ html {
 .chatbot-send-button {
   border: none;
   background: transparent;
-  cursor: pointer; */ */
+  cursor: pointer; */
   /* transition: all 0.3s ease;
 }
 
@@ -569,10 +569,10 @@ html {
 }
 
 .chatbot-container {
-  margin-top: 50px; /* Adjust as needed */
+  margin-top: 250px; /* Adjust as needed */
   background-color: #f8f9fa; /* Light background */
   border-radius: 10px; /* Rounded corners */
-  padding: 20px; /* Inner spacing */
+  padding: 15px; /* Inner spacing */
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow */
   margin-bottom: 500px;
 }

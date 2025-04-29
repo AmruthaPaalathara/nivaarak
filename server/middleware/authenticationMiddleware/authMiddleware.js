@@ -96,11 +96,9 @@ const authenticateJWT = (roles = []) => async (req, res, next) => {
 // Middleware to Authenticate User via Session (Session ID-based)
 const authenticateSession = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
-    const sessionId = authHeader && authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
+    const { sessionId } = req.body;  // Expect sessionId inside body, not Authorization
 
     if (!sessionId) {
-      logAuthAttempt(req, false, "Unauthorized - No session provided");
       return res.status(401).json({ success: false, message: "Unauthorized - No session provided" });
     }
 
@@ -190,4 +188,4 @@ setInterval(async () => {
 }, 60 * 60 * 1000);
 
 // Export authentication methods and rate limiter
-module.exports = { authenticateJWT, authenticateSession, authLimiter, authenticateUser };
+module.exports = { authenticateJWT, authenticateSession, authLimiter, authenticateUser, isTokenRevoked};

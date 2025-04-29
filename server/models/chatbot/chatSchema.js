@@ -1,13 +1,11 @@
 // Importing mongoose for MongoDB interaction
 const mongoose = require("mongoose");
-const { Counter } = require("../authentication/userSchema.js"); 
+const { Counter } = require("../authentication/userSchema.js");
 
 
 //creating a new mongoose schema for storing chat sessions
 const chatMessageSchema  = new mongoose.Schema(
-
 //defining schema fields for the chatschema
-  
       {
         role: { type: String, enum: ["user", "ai"], required: true }, //stores the user and ai responses
         content: {
@@ -20,16 +18,18 @@ const chatMessageSchema  = new mongoose.Schema(
           },
         },
         timestamp: { type: Date, default: Date.now }, //storing the time of the chat
-      });
+        parentMessageId: { type: mongoose.Schema.Types.ObjectId, ref: "ChatMessage", default: null } // Added to track message replies // tracks which message this is replying to
+      },
+    { _id: true } // ensures each message has a unique ID
+);
 
 // Define the Chat Schema
 const chatSchema = new mongoose.Schema(
   {
-    userId: { type: Number, required: true }, //stores userId by refering to 
-    documentId: { type: mongoose.Schema.Types.ObjectId, ref: "Document" }, //stores or extracts documentId from Document model (documentSchema.js)
-    
+    userId: { type: Number, required: true, ref: "User" }, //stores userId by refering to
+    documentId: { type: String, ref: "Document" },//stores or extracts documentId from Document model (documentSchema.js)
     sessionId: { type: String, required: true, unique:true }, //to identify a chat session, to ensure each chat belongs to a valid session
-    status: { type: String, enum: ["active", "closed", "archived"], default: "active" }, //status of the chat, whether it is active or closed. by default the chat is active(i.e., when a new chat happens, the chat sessions begins as active)
+    status: { type: String, enum: ["active", "closed", "archived", "pending", "paused"], default: "active" }, //status of the chat, whether it is active or closed. by default the chat is active(i.e., when a new chat happens, the chat sessions begins as active)
     messages: [chatMessageSchema],
   },
   { timestamps: true }
@@ -108,12 +108,13 @@ chatSchema.methods.closeSession = function ()  { //marks the chat as closed
   return this.save();
 };
 
-chatSchema.methods.archiveSession = function () {
-  if (this.status === "archived") {
-    return Promise.resolve(this);
+chatSchema.methods.archiveSession = async function () {
+  if (this.status !== "archived") {
+    this.status = "archived";
+    this.updatedAt = Date.now();
+    await this.save();
   }
-  this.status = "archived";
-  return this.save();
+  return this;
 };
 
 // Static method - Get closed chat sessions
@@ -129,7 +130,24 @@ chatSchema.statics.findClosedSessions = function (userId = null, page = 1, limit
     .sort({ updatedAt: -1 })
     .skip(skip)
     .limit(limit)
-    .select("sessionId messages updatedAt");
+    .select("sessionId messages updatedAt")
+    .lean(); // .lean() for better performance when not modifying documents
 };
+
+// Instance method to change the status of the chat session
+chatSchema.methods.updateStatus = function (newStatus) {
+  const validStatuses = ["active", "closed", "archived", "pending", "waiting_for_reply"];
+  if (!validStatuses.includes(newStatus)) {
+    throw new Error("Invalid status value.");
+  }
+
+  if (this.status === "archived") {
+    throw new Error("Cannot modify an archived session.");
+  }
+
+  this.status = newStatus;
+  return this.save();
+};
+
 
 module.exports = mongoose.model("Chat", chatSchema);

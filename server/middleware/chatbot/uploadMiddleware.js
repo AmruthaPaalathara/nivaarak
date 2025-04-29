@@ -5,7 +5,7 @@ const multer = require("multer");
 const crypto = require("crypto");
 
 // Ensure the "uploads" directory exists
-const uploadDir = path.join(__dirname, "../uploads");
+const uploadDir = path.join(__dirname, "../uploads/chatbot/");
 try{
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true }); //if such a directory doesn't exist then create it
@@ -19,7 +19,6 @@ const sanitizeFilename = (filename) => {
   const sanitized = filename.replace(/[^a-zA-Z0-9.\-_]/g, "_");
   return sanitized.length > 100 ? sanitized.slice(0, 100) : sanitized; // Limit filename to 100 characters
 };
-
 
 // Configure Multer storage
 //Defines where and how uploaded files are stored.

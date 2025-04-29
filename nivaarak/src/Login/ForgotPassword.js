@@ -24,7 +24,7 @@ export default function ForgotPassword() {
 
     try {
       // Verify the username
-      await axios.post(`${API_URL}/api/auth/verify-username`,  { username: username.trim() });
+      await axios.post(`${API_URL}/api/auth/verify-username`,  { username: username.trim() },{ withCredentials: true });
 
       // If username is valid, move to step 2
       setStep(2);
@@ -57,7 +57,7 @@ export default function ForgotPassword() {
 
     try {
       // Update the password
-      await axios.post(`${API_URL}/api/auth/reset-password`, { username, newPassword, confirmPassword: confirmNewPassword  });
+      await axios.post(`${API_URL}/api/auth/reset-password`, { username, newPassword, confirmPassword: confirmNewPassword  }, { withCredentials: true });
 
       // Handle success
       setSuccess("Password updated successfully. Redirecting to login page...");

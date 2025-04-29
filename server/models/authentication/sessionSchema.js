@@ -24,7 +24,7 @@ const sessionSchema = new mongoose.Schema({
 // Static method to create a session
 sessionSchema.statics.createSession = async function (userId, deviceInfo, ipAddress) {
   const session = new this({
-    sessionId: crypto.randomBytes(16).toString("hex"),
+    sessionId: uuidv4(),
     userId,
     deviceInfo,
     ipAddress,

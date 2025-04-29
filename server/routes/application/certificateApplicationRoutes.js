@@ -11,7 +11,7 @@ const isAuthenticated = require("../../middleware/authenticationMiddleware");
 const fileCleanUp = require("../../middleware/application/fileCleanUp");
  // Not destructured unless needed
 const validateApplicationForm = require("../../middleware/application/validateApplication");
-const { upload, handleUploadErrors } = require("../../middleware/application/uploadMiddleware");
+const { appUpload, handleUploadErrors } = require("../../middleware/multerConfigs");
 const {authenticateUser} = require("../../middleware/authenticationMiddleware/authMiddleware"); // For file uploads
 
 
@@ -21,7 +21,7 @@ if (process.env.NODE_ENV === 'development') {
   global.validateApplicationForm = (req, res, next) => next();
 }
 
-router.post("/submit", isAuthenticated,  upload.any(),// Use upload middleware to handle file uploads
+router.post("/submit", isAuthenticated, appUpload.any(),// Use upload middleware to handle file uploads
     handleUploadErrors,  // Handle file upload errors
     fileCleanUp,
     ...validateApplicationForm,  // Spread form validation middleware

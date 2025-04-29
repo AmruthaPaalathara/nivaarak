@@ -17,8 +17,8 @@ const ALLOWED_DOCUMENT_TYPES = [
   "Income Certificate",
   "Domicile Certificate",
   "Caste Certificate",
-  "Marriage Certificate",
-  "Land Records",
+  "Agricultural Certificate",
+  "Non- Creamy Layer",
   "Property Documents",
   "Educational Certificates",
   "Pension Documents",
@@ -26,7 +26,7 @@ const ALLOWED_DOCUMENT_TYPES = [
 ];
 
 // Configure multer for file uploads
-const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, "../../../uploads/");
+const uploadDir = process.env.APPLICATION_UPLOAD_DIR || path.join(__dirname, "../../../uploads/applications/");
 const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024; // 5MB
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
@@ -61,8 +61,8 @@ exports.getAllDocumentTypes = (req, res) => {
     "Income Certificate",
     "Domicile Certificate",
     "Caste Certificate",
-    "Marriage Certificate",
-    "Land Records",
+    "Agricultural Certificate",
+    "Non- Creamy Layer",
     "Property Documents",
     "Educational Certificates",
     "Pension Documents",
@@ -91,8 +91,6 @@ exports.submitApplication = [
 
 async (req, res) => {
 
-  console.log("submitApplication hit");
-
     const errors = validationResult(req);
     console.log(errors.array())
 
@@ -107,12 +105,11 @@ async (req, res) => {
       }
 
       const { firstName, lastName, email, phone, agreementChecked, state, documentType } = req.body;
-      console.log("req.body:", req.body);
       const userId = req.user.userId;
 
-      console.log("Looking for userId in DB:", userId);
+
       const userExists = await User.findOne({ userId });
-      console.log("Users in DB:", userExists);
+
       if (!userExists) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -128,32 +125,48 @@ async (req, res) => {
       }
       const uploadedFiles = {};
         req.files.forEach((file) => {
-            const key = file.fieldname.replace(/^files\[/, "").replace(/\]$/, "");
-            if (!uploadedFiles[key]) {
-                uploadedFiles[key] = [];
-            }
-            uploadedFiles[key].push(path.relative(uploadDir, file.path));
+          const rawKey = file.fieldname.replace(/^files\[/, "").replace(/\]$/, "");
+          const key = rawKey.replace(/[^a-zA-Z0-9_-]/g, "_"); // sanitize for Mongo
+          if (!uploadedFiles[key]) {
+            uploadedFiles[key] = [];
+          }
+          uploadedFiles[key].push(path.relative(uploadDir, file.path));
         });
 
-        const allUploadedPaths = Object.values(uploadedFiles).flat();
+      const allUploadedPaths = Object.values(uploadedFiles).flat();
 
-    // Check if a UserDocument entry exists for this user and documentType
+      // Check if a UserDocument entry exists for this user and documentType
     let userDocument = await UserDocument.findOne({ userId, documentType });
 
-    // If it doesn't exist, create a new entry
-    if (!userDocument) {
+      // If it doesn't exist, create a new entry
+      if (!userDocument) {
+        userDocument = new UserDocument({
+          userId,
+          documentType,
+          files: uploadedFiles,
+          submittedAt: new Date()
+        });
+      } else {
+        // Update the document if it already exists
+        for (const key in uploadedFiles) {
+          if (!userDocument.files[key]) {
+            userDocument.files[key] = [];
+          }
+          userDocument.files[key].push(...uploadedFiles[key]);
 
-      userDocument = new UserDocument({ userId,
-        documentType,
-        files: allUploadedPaths,
-        submittedAt: new Date() });
+        }
 
-      await userDocument.save();
-      console.log("Application saved successfully.");
-    }
+        userDocument.submittedAt = new Date();
+      }
 
-        const extractedDetails = {};
+      try {
+        await userDocument.save();
 
+      } catch (err) {
+        console.error("Error saving UserDocument:", err);
+      }
+
+      const extractedDetails = {};
 
       // Save application
       const newApplication = new Certificate({
@@ -171,43 +184,36 @@ async (req, res) => {
         extractedDetails: {},
       });
 
-      console.log(" Saving Certificate application...");
+
       await newApplication.save();
-      console.log(" Certificate saved successfully.");
+      // console.log("Final payload:", {
+      //   applicant: userId,
+      //   firstName,
+      //   lastName,
+      //   email,
+      //   phone,
+      //   documentType: userDocument._id,
+      //   state,
+      //   files: uploadedFiles,
+      //   agreementChecked,
+      //   status: "Pending",
+      //   extractedDetails,
+      // });
 
-      console.log("Final payload:", {
-        applicant: userId,
-        firstName,
-        lastName,
-        email,
-        phone,
-        documentType: userDocument._id,
-        state,
-        files: uploadedFiles,
-        agreementChecked,
-        status: "Pending",
-        extractedDetails,
-      });
-
-      res.status(201).json({ message: "Application submitted successfully!", application: newApplication });
+      res.status(201).json({  success: true, message: "Application submitted successfully!", application: newApplication });
     } catch (error) {
       console.error("Application Submission Error:", error);
-
 
     // Cleanup uploaded files on error
       if (res.locals.cleanupFiles) {
         res.locals.cleanupFiles();
       }
-
-
-      res.status(500).json({ message: "Server error during application submission" });
+      res.status(500).json({ success: false, message: "Server error during application submission" });
 }
   },
 ];
 
-
 //  Get all applications
-console.log("Submit endpoint hit")
 exports.getApplications = async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page)) || 1;
@@ -337,15 +343,8 @@ exports.deleteCertificate = async (req, res) => {
   }
 };
 
-exports.getDocumentTypes = async (req, res) => {
-    try {
-        const documents = await UserDocument.find().select("documentType -_id");
-        const types = [...new Set(documents.map(doc => doc.documentType))];
-        res.json(types);
-    } catch (error) {
-        console.error("Error fetching document types:", error);
-        res.status(500).json({ message: "Failed to fetch document types." });
-    }
+exports.getDocumentTypes = (req, res) => {
+  res.status(200).json({ success: true, documentTypes: ALLOWED_DOCUMENT_TYPES });
 };
 
 exports.getStatusByUserId = async (req, res) => {
