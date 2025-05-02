@@ -14,7 +14,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import ApplicationForm from "./certificateApplication/ApplicationForm.js";
 import ChatWithUpload from "./chat/components/ChatWithUpload";
 import EmailForm from "./certificateApplication/EmailForm.js";
-import Profile from "./dashboard/Profile.js";
+import Profile from "./dashboard/Dashboard.js";
 import { useAuth } from "./contexts/AuthContext";
 import { toast } from 'react-toastify';
 

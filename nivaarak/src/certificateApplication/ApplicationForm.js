@@ -19,6 +19,9 @@ const ApplicationForm = () => {
     state: "Maharashtra", // Immutable
     files: {},
     agreementChecked: false,
+    emergencyLevel: "",
+    requiredBy: "",
+
   });
 
 
@@ -37,15 +40,22 @@ const ApplicationForm = () => {
   // Define document types and required files
   const documentRequirements = {
     "Birth Certificate": ["Birth Proof", "Parent's Identity Proof", "Parent's Address Proof", "Parent's Marriage Certificate"],
-    "Income Certificate": ["Income Proof", "Identity Proof", "Address Proof", "Age Proof"],
-    "Domicile Certificate": ["Residence Proof", "Identity Proof"],
+    "Death Certificate": ["Death Certificate", "Identity Proof", "Address Proof"],
+    "Income Certificate": ["Income Proof", "Identity Proof", "Address Proof", "Age Proof", "Salary Slip","Bank Statement"],
+    "Domicile Certificate": ["Residence Proof", "Identity Proof", "Aadhaar Card", "School Leaving Certificate"],
     "Caste Certificate": ["Caste Proof", "Domicile Proof", "Identity Proof", "Address Proof"],
-    "Agricultural Certificate": ["Address Proof", "Identity Proof"],
+    "Agricultural Certificate": ["Address Proof", "Identity Proof", "Land Ownership Proof"],
     "Non- Creamy Layer": ["Income Proof", "Identity Proof", "Address Proof", "Caste Proof"],
     "Property Documents": ["Property Ownership Proof", "Identity Proof"],
-    "Educational Certificates": ["Education Proof", "Identity Proof"],
-    "Pension Documents": ["Pension Proof", "Identity Proof"],
-    "Other": ["Supporting Documents", "Additional Proof"],
+    "Marriage Certificates": ["Aadhaar Proof", "Wedding Invitation Proof", "Marriage Declaration", "Address Proof"],
+    "Senior Citizen Certificate": ["Aadhaar Card", "Age Proof"],
+    "Solvency Certificate": ["Bank Statements", "Property Documents"],
+    "Shop and Establishment Registration": ["Aadhaar Card","Rent Agreement","Electricity Bill"],
+    "Contract Labour License": ["Employer Details", "Aadhaar Card", "Proof of Business"],
+    "Factory Registration Certificate": ["Factory Layout Plan", "Aadhaar Card", "Proof of Ownership"],
+    "Boiler Registration Certificate": ["Manufacturer approval","Aadhaar Card","Technical Specification"],
+    "Landless Certificate": ["Revenue Records","Aadhaar Card"],
+    "Permission for Water Usage": ["Proof of Land Ownership","Aadhaar Card"],
   };
 
   const finalDocumentTypes = documentTypes.length > 0 ? documentTypes : Object.keys(documentRequirements);
@@ -174,6 +184,9 @@ const ApplicationForm = () => {
       formDataToSend.append("state", formData.state);
       formDataToSend.append("documentType", formData.documentType);
       formDataToSend.append("agreementChecked", formData.agreementChecked);
+      formDataToSend.append("emergencyLevel", formData.emergencyLevel);
+      formDataToSend.append("requiredBy", formData.requiredBy);
+
 
       Object.entries(formData.files).forEach(([key, file]) => {
         formDataToSend.append(key, file);
@@ -207,12 +220,12 @@ const ApplicationForm = () => {
         }, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        console.log("✅ Saved Generated PDF with userId:", userId, "and documentType:", formData.documentType.trim().toLowerCase());
+        console.log(" Saved Generated PDF with userId:", userId, "and documentType:", formData.documentType.trim().toLowerCase());
 
-        console.log("✅ PDF Generated:", pdfGenerateResponse.data);
+        console.log(" PDF Generated:", pdfGenerateResponse.data);
 
         // 🔹 Step 3: Send Email
-        console.log("📨 About to send email...");
+        console.log(" About to send email...");
         const emailSendResponse = await API.post("/email/send-email", {
           email: formData.email,
           documentType: formData.documentType,
@@ -220,9 +233,9 @@ const ApplicationForm = () => {
         });
 
         if (emailSendResponse.data.success) {
-          console.log("✅ Email sent:", emailSendResponse.data);
+          console.log(" Email sent:", emailSendResponse.data);
         } else {
-          console.warn("⚠️ Email sending failed:", emailSendResponse.data.message);
+          console.warn(" Email sending failed:", emailSendResponse.data.message);
           toast.warning("Application submitted, but email not sent.");
         }
 
@@ -240,7 +253,7 @@ const ApplicationForm = () => {
       }
 
     } catch (error) {
-      console.error("❌ Error during submit or PDF/Email:", error);
+      console.error(" Error during submit or PDF/Email:", error);
       toast.error("An unexpected error occurred.");
     } finally {
       setIsSubmitting(false);
@@ -290,15 +303,22 @@ const ApplicationForm = () => {
 
         setDocumentTypes([
           "Birth Certificate",
+          "Death Certificate",
           "Income Certificate",
           "Domicile Certificate",
           "Caste Certificate",
           "Agricultural Certificate",
           "Non- Creamy Layer",
           "Property Documents",
-          "Educational Certificates",
-          "Pension Documents",
-          "Other"
+          "Marriage Certificates",
+          "Senior Citizen Certificate",
+          "Solvency Certificate",
+          "Shop and Establishment Registration",
+          "Contract Labour License",
+          "Factory Registration Certificate",
+          "Boiler Registration Certificate",
+          "Landless Certificate",
+          "Permission for Water Usage"
         ]);
       }
     };
@@ -374,6 +394,7 @@ const ApplicationForm = () => {
                               <Form.Label>State</Form.Label>
                               <Form.Control type="text" name="state" value={formData.state} readOnly required/>
                             </Form.Group>
+
                             {formData.documentType &&
                                 Array.isArray(documentRequirements[formData.documentType]) &&
                                 documentRequirements[formData.documentType].map((docLabel, index) => {
@@ -400,6 +421,16 @@ const ApplicationForm = () => {
                                       </Form.Group>
                                   );
                                 })}
+                            <Form.Group controlId="emergencyLevel" className="mt-3">
+                              <Form.Label>Urgency Level</Form.Label>
+                              <Form.Select name="emergencyLevel" value={formData.emergencyLevel} onChange={handleChange} required>
+                                <option value="">Select urgency level</option>
+                                <option value="Critical"> Critical (Need immediately)</option>
+                                <option value="High"> High (Need within 1–2 days)</option>
+                                <option value="Medium"> Medium (This week)</option>
+                                <option value="Low"> Low (Not urgent)</option>
+                              </Form.Select>
+                            </Form.Group>
                           </Col>
 
                           <Col md={6}>
@@ -433,6 +464,16 @@ const ApplicationForm = () => {
                               </Form.Select>
                             </Form.Group>
 
+                            <Form.Group controlId="requiredBy" className="mt-3">
+                              <Form.Label>When do you need this certificate?</Form.Label>
+                              <Form.Control
+                                  type="date"
+                                  name="requiredBy"
+                                  value={formData.requiredBy}
+                                  onChange={handleChange}
+                                  required
+                              />
+                            </Form.Group>
                             {/* Agreement Checkbox */}
                             <Form.Group controlId="agreementChecked" className="mt-4">
                               <Form.Check

@@ -14,15 +14,22 @@ const ALLOWED_FILE_TYPES = ["application/pdf"];
 const ALLOWED_STATUSES = ["Pending", "Approved", "Rejected", "Processing"];
 const ALLOWED_DOCUMENT_TYPES = [
   "Birth Certificate",
+  "Death Certificate",
   "Income Certificate",
   "Domicile Certificate",
   "Caste Certificate",
   "Agricultural Certificate",
   "Non- Creamy Layer",
   "Property Documents",
-  "Educational Certificates",
-  "Pension Documents",
-  "Other"
+  "Marriage Certificates",
+  "Senior Citizen Certificate",
+  "Solvency Certificate",
+  "Shop and Establishment Registration",
+  "Contract Labour License",
+  "Factory Registration Certificate",
+  "Boiler Registration Certificate",
+  "Landless Certificate",
+  "Permission for Water Usage"
 ];
 
 // Configure multer for file uploads
@@ -58,15 +65,22 @@ const upload = multer({
 exports.getAllDocumentTypes = (req, res) => {
   const allTypes = [
     "Birth Certificate",
+    "Death Certificate",
     "Income Certificate",
     "Domicile Certificate",
     "Caste Certificate",
     "Agricultural Certificate",
     "Non- Creamy Layer",
     "Property Documents",
-    "Educational Certificates",
-    "Pension Documents",
-    "Other"
+    "Marriage Certificates",
+    "Senior Citizen Certificate",
+    "Solvency Certificate",
+    "Shop and Establishment Registration",
+    "Contract Labour License",
+    "Factory Registration Certificate",
+    "Boiler Registration Certificate",
+    "Landless Certificate",
+    "Permission for Water Usage"
   ];
 
   res.json({ documentTypes: allTypes });
@@ -87,6 +101,15 @@ exports.submitApplication = [
     }
     return true;
   }),
+  body("emergencyLevel")
+      .optional()
+      .isIn(["Critical", "High", "Medium", "Low"])
+      .withMessage("Invalid emergency level"),
+
+  body("requiredBy")
+      .optional()
+      .isISO8601()
+      .withMessage("Invalid date format for requiredBy"),
 
 
 async (req, res) => {
@@ -104,7 +127,7 @@ async (req, res) => {
         return res.status(401).json({ message: "Unauthorized: User not found" });
       }
 
-      const { firstName, lastName, email, phone, agreementChecked, state, documentType } = req.body;
+      const { firstName, lastName, email, phone, agreementChecked, state, documentType, emergencyLevel, requiredBy } = req.body;
       const userId = req.user.userId;
 
 
@@ -180,6 +203,8 @@ async (req, res) => {
         files: uploadedFiles,
         flatFiles: allUploadedPaths,
         agreementChecked: agreementChecked === "true" || agreementChecked === true,
+        emergencyLevel,
+        requiredBy,
         status: "Pending",
         extractedDetails: {},
       });
@@ -225,23 +250,35 @@ exports.getApplications = async (req, res) => {
 
 
     const total = await Certificate.countDocuments(query);
-    const applications = await Certificate.find(query)
-        .populate({
-          path: "applicant",
-          model: "User",
-          localField: "applicant",
-          foreignField: "userId",
-          justOne: true,
-          select: "username email"
-        })
+    const rawApps = await Certificate.find(query)
+        .populate({ path: "documentType", model: "UserDocument", select: "documentType files submittedAt" })
         .select("-__v")
         .skip(skip)
         .limit(limit)
-        .lean(); // Optional
+        .lean();
 
-    if (!applications.length) {
-      return res.status(200).json({ success: true, message: "No applications found", data: [] });
-    }
+    const applications = rawApps.map(app => ({
+      ...app,
+      createdAtFormatted: new Date(app.createdAt).toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      }),
+      updatedAtFormatted: new Date(app.updatedAt).toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      }),
+    }));
+    
 
     res.status(200).json({
       success: true,

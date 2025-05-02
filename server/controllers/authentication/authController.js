@@ -74,6 +74,7 @@ exports.registerUser = async (req, res) => {
       email: trimmedEmail,
       phone: phone.trim(),
       password: trimmedPassword,
+      role: role || "user",
     });
 
     console.log("User Object to Save:", newUser);
@@ -106,7 +107,7 @@ exports.loginUser = async (req, res) => {
     if (!isMatch) {
       return res.status(401).json({ success: false, message: "Invalid password. Try again." });
     }
-    const tokenPayload = {  userId: user.userId, username: user.username };
+    const tokenPayload = {  userId: user.userId, username: user.username,role: user.role, };
     const accessToken = jwt.sign(  tokenPayload, process.env.JWT_SECRET, { expiresIn: "15m" });  // Short-lived
     const refreshToken = jwt.sign(tokenPayload, process.env.REFRESH_SECRET, { expiresIn: "30d" });  // Long-lived
     // Storing refresh token in httpOnly cookie (more secure approach):
