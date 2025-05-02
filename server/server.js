@@ -22,8 +22,10 @@ const isAuthenticated = require("./middleware/authenticationMiddleware.js");
 const { getUserDocuments } = require("./controllers/application/dropdownDocumentController");
 const  documentRouter  = require("./routes/chatbot/documentRoute");
 const priorityApplicationRoutes = require('./routes/application/priorityApplicationRoutes');
-const userRoutes = require("./routes/userDashboard/userRoutes");
-const chartRoutes = require('./routes/userDashboard/charts/chartRoutes');
+const userRoutes = require("./routes/Dashboard/dashboardRoutes");
+const chartRoutes = require('./routes/Dashboard/userCharts/chartRoutes');
+const adminRoutes = require("./routes/Dashboard/adminCharts/chartRoutes");
+const eligibilityRoutes = require("./routes/eligibility/eligibilityRoutes");
 
 const requiredEnvVars = [
   "JWT_SECRET",
@@ -86,7 +88,9 @@ app.use("/api/email", emailRoutes);
 app.use("/api/pdf", generatePdfRoutes);
 app.use('/api/priority-applications', priorityApplicationRoutes);
 app.use("/api/users", userRoutes);
-app.use('/api/charts', chartRoutes);
+app.use('/api/userCharts', chartRoutes);
+app.use("/api/admin-dashboard", adminRoutes);
+app.use("/api/eligibility", eligibilityRoutes);
 
 
 // Connect to MongoDB

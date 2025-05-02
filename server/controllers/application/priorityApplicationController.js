@@ -3,7 +3,7 @@ const { getApplicationPriority } = require('../../utils/prioritiseApplication');
 
 const submitPriorityApplication = async (req, res) => {
   try {
-    const { userId, certificateType, department, isEmergency } = req.body;
+    const { userId, certificateType, department, isEmergency, requiredBy  } = req.body;
 
     if (!userId || !certificateType || !department) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
@@ -27,6 +27,7 @@ const submitPriorityApplication = async (req, res) => {
       priority,
       department,
       isEmergency: isEmergency === true || isEmergency === 'true',
+      requiredBy,
     });
 
     await newApp.save();

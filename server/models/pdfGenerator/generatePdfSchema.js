@@ -8,8 +8,4 @@ const generatePdfSchema = new mongoose.Schema({
   pdfContent: { type: String },
 }, { timestamps: true });
 
-//  Indexes for optimized queries
-generatePdfSchema.index({ userId: 1, documentType: 1 });
-
-
 module.exports = mongoose.model("GeneratedPDF", generatePdfSchema);

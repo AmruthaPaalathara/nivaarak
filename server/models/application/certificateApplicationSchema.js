@@ -1,8 +1,7 @@
 const mongoose = require("mongoose");
 const path = require("path");
 const mime = require("mime-types");
-const User = require("../authentication/userSchema");
-const Certificate = require("../../models/application/certificateApplicationSchema");
+const { User } = require("../authentication/userSchema");
 
 
 // Allowed file types
@@ -111,7 +110,9 @@ const certificateApplicationSchema = new mongoose.Schema(
               }
           ],
           default: [],
-      }
+      },
+      emergencyLevel: { type: String, enum: ['Critical', 'High', 'Medium', 'Low'], default: 'Low' },
+      requiredBy: { type: Date }
 
   },
   { timestamps: true }

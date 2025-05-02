@@ -21,15 +21,22 @@ exports.getUserDocuments = async (req, res) => {
 
     const allTypes = [
       "Birth Certificate",
+      "Death Certificate",
       "Income Certificate",
       "Domicile Certificate",
       "Caste Certificate",
       "Agricultural Certificate",
       "Non- Creamy Layer",
       "Property Documents",
-      "Educational Certificates",
-      "Pension Documents",
-      "Other"
+      "Marriage Certificates",
+      "Senior Citizen Certificate",
+      "Solvency Certificate",
+      "Shop and Establishment Registration",
+      "Contract Labour License",
+      "Factory Registration Certificate",
+      "Boiler Registration Certificate",
+      "Landless Certificate",
+      "Permission for Water Usage"
     ];
 
     if (!userDocuments || userDocuments.length === 0) {

@@ -9,6 +9,8 @@ const applicationSchema = new mongoose.Schema({
     department: { type: String, required: true },
     status: { type: String, default: "Pending" },
     isEmergency: { type: Boolean, default: false },
+    emergencyLevel: { type: String, enum: ['Critical', 'High', 'Medium', 'Low'], default: 'Low' },
+    requiredBy: { type: Date },
     timestamp: { type: Date, default: Date.now }
 });
 
