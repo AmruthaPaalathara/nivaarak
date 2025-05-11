@@ -29,7 +29,7 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 
 const validateUser = async (userId) => {
   if (!userId || isNaN(userId)) throw new Error("Unauthorized: Invalid userId");
-  const user = await User.findOne({ userId });
+  const user = await User.findOne({ userId: userId });
   if (!user) throw new Error("Unauthorized: User does not exist");
 };
 
@@ -299,7 +299,7 @@ const getDocuments = async (req, res) => {
     }
 
     // Check if user exists
-    const userExists = await User.findOne({ userId });
+    const userExists = await User.findOne({ userId: userId });
     if (!userExists) {
       return res.status(401).json({ success: false, message: "Unauthorized: User does not exist" });
     }

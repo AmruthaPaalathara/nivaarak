@@ -11,8 +11,6 @@ const hashToken = (token) => crypto.createHash("sha256").update(token).digest("h
 // Session expiry time (default: 1 hour)
 const sessionExpiryTime = Number(process.env.SESSION_EXPIRY_TIME) || 60 * 60 * 1000;
 
-
-
 const revokeToken = async (token, expiry) => {
   const hashedToken = hashToken(token);
   const ttl = Math.floor(expiry / 1000); // Convert ms to seconds
@@ -28,8 +26,6 @@ const isTokenRevoked = async (token) => {
     return false; // Assume not revoked if Redis fails
   }
 };
-
-
 
 // Rate limiter for authentication endpoints
 const authLimiter = rateLimit({
@@ -55,7 +51,7 @@ const authenticateJWT = (roles = []) => async (req, res, next) => {
     logAuthAttempt(req, false, "Unauthorized - Token revoked");
     return res.status(401).json({ success: false, message: "Unauthorized - Token revoked" });
   }
-
+  console.log("Checking if token is revoked:", token);
   try {
     if (!process.env.JWT_SECRET) {
       console.error("JWT_SECRET is missing from environment variables!");
@@ -73,6 +69,7 @@ const authenticateJWT = (roles = []) => async (req, res, next) => {
     // Attach full user details (excluding password) to the request
     const user = await User.findOne({ userId: decoded.userId }).select("-password");
     if (!user) {
+      console.error("User lookup failed:", decoded.userId);
       return res.status(401).json({ success: false, message: "Unauthorized - User not found" });
     }
 
@@ -114,7 +111,7 @@ const authenticateSession = async (req, res, next) => {
     }
 
     await Session.updateOne({ sessionId }, { lastAccessed: Date.now() });
-    req.userId = session.userId;
+    req.user = { userId: session.userId }; // Better to unify structure
     logAuthAttempt(req, true, "Session authentication successful");
     next();
   } catch (error) {

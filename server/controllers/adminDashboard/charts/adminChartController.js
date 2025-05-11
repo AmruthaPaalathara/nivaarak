@@ -1,4 +1,5 @@
 const Certificate = require("../../../models/application/certificateApplicationSchema");
+const UserDocument = require("../../../models/application/userDocumentSchema");
 
 exports.getStatusStats = async (req, res) => {
     try {
@@ -19,24 +20,45 @@ exports.getStatusStats = async (req, res) => {
         res.status(500).json({ success: false, message: "Failed to fetch stats" });
     }
 };
+
 exports.getAdminApplicationChartStats = async (req, res) => {
     try {
-        const aggregation = await Certificate.aggregate([
-            {
-                $group: {
-                    _id: "$documentType",
-                    count: { $sum: 1 }
-                }
-            },
-            { $sort: { count: -1 } }
-        ]);
+        const allApplications = await Certificate.find().populate({
+            path: "documentType",
+            model: "UserDocument",
+            select: "documentType"
+        });
 
-        const chartData = aggregation.map((entry) => ({
-            documentType: entry._id,
-            count: entry.count
+        const docMap = {};
+        const statusMap = {};
+
+        for (const app of allApplications) {
+            const docType = app.documentType?.documentType || "Unknown";
+            const status = app.status;
+
+            // Count total
+            docMap[docType] = (docMap[docType] || 0) + 1;
+
+            // Count by status
+            const key = `${docType}_${status}`;
+            statusMap[key] = (statusMap[key] || 0) + 1;
+        }
+
+        const totalApplications = Object.entries(docMap).map(([type, count]) => ({
+            documentType: type,
+            count
         }));
 
-        res.status(200).json({ success: true, data: chartData });
+        const statusBreakdown = Object.entries(statusMap).map(([key, count]) => {
+            const [type, status] = key.split("_");
+            return { documentType: type, status, count };
+        });
+
+        res.status(200).json({
+            success: true,
+            totalApplications,
+            statusBreakdown
+        });
     } catch (err) {
         console.error("Admin chart error:", err);
         res.status(500).json({ success: false, message: "Failed to fetch admin chart data" });

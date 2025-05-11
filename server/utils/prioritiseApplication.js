@@ -2,17 +2,17 @@
 
 const ApplicationPriority = require('../models/application/applicationPrioritySchema');
 
+// Directly map document types to lowercase
+const priorityMap = Object.fromEntries(
+    Object.entries(ApplicationPriority).map(([key, value]) => [key.toLowerCase(), value])
+);
 
 function getApplicationPriority(documentType) {
-    if (!documentType) return ApplicationPriority["Other"];
+    if (!documentType || typeof documentType !== 'string') return ApplicationPriority["Other"];
 
     const cleaned = documentType.trim().toLowerCase();
 
-    // Build lowercase map to handle case-insensitive matching
-    const priorityMap = Object.fromEntries(
-        Object.entries(ApplicationPriority).map(([key, value]) => [key.toLowerCase(), value])
-    );
-
+    // Use the priority map directly
     const priority = priorityMap[cleaned];
 
     if (priority === undefined) {

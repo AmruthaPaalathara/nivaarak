@@ -1,4 +1,3 @@
-
 import sys
 import json
 import os
@@ -8,6 +7,7 @@ import pdfplumber
 import pytesseract
 from pdf2image import convert_from_path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import argparse
 
 # Logging config
 logging.basicConfig(
@@ -28,36 +28,36 @@ def extract_text_with_pdfplumber(pdf_path):
         logging.warning(f"pdfplumber extraction failed: {str(e)}")
         return None, 0
 
-def ocr_page(image):
+def ocr_page(image, lang):
     try:
         return pytesseract.image_to_string(
             image,
-            lang='eng',
+            lang=lang,
             config='--psm 6 --oem 3 -c preserve_interword_spaces=1'
         )
     except Exception as e:
         logging.error(f"OCR failed: {str(e)}")
         return ""
 
-def extract_text_with_ocr(pdf_path):
+def extract_text_with_ocr(pdf_path, lang):
     try:
         images = convert_from_path(pdf_path, dpi=300, fmt='jpeg', grayscale=True)
         with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = [executor.submit(ocr_page, img) for img in images]
+            futures = [executor.submit(ocr_page, img, lang) for img in images]
             text_parts = [f.result() for f in as_completed(futures)]
         return "\n".join(text_parts), len(images)
     except Exception as e:
         logging.error(f"OCR failed: {str(e)}")
         return None, 0
 
-def extract_text_from_pdf(pdf_path, timeout=300):
+def extract_text_from_pdf(pdf_path, lang="eng+hin+mar", timeout=300):
     start_time = time.time()
 
-    # Try with pdfplumber
     text, pages = extract_text_with_pdfplumber(pdf_path)
     if text and text.strip():
         return {
             "status": "success",
+            "documentId": os.path.basename(pdf_path),
             "text": text.strip(),
             "metadata": {
                 "pages": pages,
@@ -66,54 +66,66 @@ def extract_text_from_pdf(pdf_path, timeout=300):
             }
         }
 
-    # Fallback to OCR
-    text, pages = extract_text_with_ocr(pdf_path)
+    text, pages = extract_text_with_ocr(pdf_path, lang=lang)
     if text and text.strip():
         return {
             "status": "success",
+            "documentId": os.path.basename(pdf_path),
             "text": text.strip(),
             "metadata": {
                 "pages": pages,
                 "method": "ocr",
+                "lang": lang,
                 "time_taken": round(time.time() - start_time, 2)
             }
         }
 
     return {
         "status": "error",
+        "documentId": os.path.basename(pdf_path),
         "message": "No text could be extracted",
         "metadata": {
             "time_taken": round(time.time() - start_time, 2)
         }
     }
 
-def run_script(pdf_path):
+def run_script(pdf_path, lang="eng+hin+mar"):
     if not os.path.exists(pdf_path):
         return {
             "status": "error",
             "message": f"File not found: {pdf_path}"
         }
-    return extract_text_from_pdf(pdf_path)
+    return extract_text_from_pdf(pdf_path, lang=lang)
 
 if __name__ == "__main__":
     try:
-        # Priority 1: stdin JSON for Express.js usage
-        if not sys.stdin.isatty():
+        if len(sys.argv) >= 2:
+            # Use command‐line arg first
+            parser = argparse.ArgumentParser()
+            parser.add_argument("pdf_path", help="Path to the PDF file")
+            parser.add_argument("--lang",   default="eng+hin+mar",
+                                help="OCR language (default: eng+hin+mar)")
+            args    = parser.parse_args()
+            pdf_path = args.pdf_path
+            lang     = args.lang
+
+        elif not sys.stdin.isatty():
+            # Fallback to JSON piped via stdin
             input_data = sys.stdin.read().strip()
             input_json = json.loads(input_data)
-            pdf_path = input_json.get("pdf_path")
+            pdf_path   = input_json.get("pdf_path")
+            lang       = input_json.get("lang", "eng+hin+mar")
             if not pdf_path:
                 raise ValueError("Missing 'pdf_path' in input JSON")
-            result = run_script(pdf_path)
-        # Priority 2: command-line argument
-        elif len(sys.argv) == 2:
-            pdf_path = sys.argv[1]
-            result = run_script(pdf_path)
+
         else:
-            result = {
-                "status": "error",
-                "message": "Usage: echo {\"pdf_path\": \"path\"} | python process_pdf.py OR python process_pdf.py <path>"
-            }
+            # Neither arg nor JSON → usage error
+            print(json.dumps({
+                "status":    "error",
+                "message":   "Usage: python process_pdf.py <path> [--lang LANG] "
+                             "or echo '{\"pdf_path\":\"…\"}' | python process_pdf.py"
+            }))
+            sys.exit(1)
 
     except Exception as e:
         result = {

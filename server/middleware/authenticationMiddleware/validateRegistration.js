@@ -70,7 +70,18 @@ const validateRegistration = [
     .matches(/^\d{10}$/)
     .withMessage("Phone number must be 10 digits"),
 
-  // Validate password
+    body("emergencyLevel")
+        .optional()
+        .isIn(["Low", "Medium", "High", "Critical"])
+        .withMessage("Emergency level must be one of Low, Medium, High, or Critical"),
+
+    body("requiredBy")
+        .optional()
+        .isISO8601()
+        .withMessage("RequiredBy must be a valid date (ISO 8601 format)"),
+
+
+    // Validate password
   body("password")
     .isLength({ min: 8 })
     .withMessage("Password must be at least 8 characters long")

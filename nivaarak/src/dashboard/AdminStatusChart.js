@@ -7,9 +7,10 @@ const AdminStatusChart = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    // Retrieve user role from localStorage (or authentication state)
-    const userRole = localStorage.getItem("userRole") || "user"; // Default to "user" if not set
-    const endpoint = userRole === "admin" ? "/admin-dashboard/status-stats" : "/userCharts/user-applications";
+    const userRole = localStorage.getItem("userRole") || "user"; // Could be improved via useAuth()
+    const endpoint = userRole === "admin"
+        ? "/admin-dashboard/status-stats"
+        : "/userCharts/user-applications";
 
     useEffect(() => {
         const fetchStatusData = async () => {
@@ -21,15 +22,20 @@ const AdminStatusChart = () => {
                     return;
                 }
 
-                setLoading(true);
-                const res = await API.get(endpoint, { headers: { Authorization: `Bearer ${token}` } });
-                setLoading(false);
+                const res = await API.get(endpoint, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
 
-                const { Pending, Approved, Rejected } = res.data;
-                setChartData([Pending, Approved, Rejected]);
+                const { Pending = 0, Approved = 0, Rejected = 0 } = res.data || {};
+                setChartData([
+                    { name: 'Pending', y: Pending, color: '#f0ad4e' },
+                    { name: 'Approved', y: Approved, color: '#5cb85c' },
+                    { name: 'Rejected', y: Rejected, color: '#d9534f' }
+                ]);
             } catch (err) {
-                console.error("Error fetching status data:", err);
+                console.error("Chart fetch error:", err);
                 setError("Failed to fetch chart data. Please try again.");
+            } finally {
                 setLoading(false);
             }
         };
@@ -37,16 +43,30 @@ const AdminStatusChart = () => {
         fetchStatusData();
     }, [endpoint]);
 
-    // Customize title dynamically based on user role
-    const chartTitle = userRole === "admin" ? "Admin Application Status Distribution" : "Your Application Status Overview";
+    const chartTitle = userRole === "admin"
+        ? "Admin Application Status Distribution"
+        : "Your Application Status Overview";
 
     const chartConfig = useMemo(() => ({
         chart: { type: 'column' },
         title: { text: chartTitle },
-        xAxis: { categories: ['Pending', 'Approved', 'Rejected'], title: { text: 'Status' } },
-        yAxis: { min: 0, title: { text: 'Number of Applications' } },
-        series: [{ name: 'Applications', data: chartData || [0, 0, 0] }],
-        colors: ['#f0ad4e', '#5cb85c', '#d9534f'],
+        xAxis: {
+            categories: chartData?.map(d => d.name),
+            title: { text: 'Status' }
+        },
+        yAxis: {
+            min: 0,
+            title: { text: 'Number of Applications' }
+        },
+        series: [{
+            name: 'Applications',
+            data: chartData
+        }],
+        plotOptions: {
+            column: {
+                dataLabels: { enabled: true }
+            }
+        },
         credits: { enabled: false }
     }), [chartData, chartTitle]);
 
@@ -56,18 +76,13 @@ const AdminStatusChart = () => {
             return;
         }
 
-        if (window.Highcharts && chartRef.current && chartData) {
+        if (chartRef.current && chartData) {
             window.Highcharts.chart(chartRef.current, chartConfig);
         }
     }, [chartData, chartConfig]);
 
-    if (loading) {
-        return <p>Loading chart data...</p>;
-    }
-
-    if (error) {
-        return <p style={{ color: "red" }}>{error}</p>;
-    }
+    if (loading) return <p>Loading chart data...</p>;
+    if (error) return <p style={{ color: "red" }}>{error}</p>;
 
     return <div ref={chartRef} style={{ width: '100%', height: '400px' }} />;
 };

@@ -1,13 +1,14 @@
 const Certificate = require("../../models/application/certificateApplicationSchema");
 const UserDocument = require("../../models/application/userDocumentSchema");
-const { User } = require("../../models/authentication/userSchema");
+const  { User }  = require("../../models/authentication/userSchema");
+const DepartmentMapping = require('../../models/application/DepartmentMapping');
 const { processPdf } = require("../../middleware/chatbot/extractDetails");
 const { body, validationResult } = require("express-validator");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const cleanupUploads = require("../../middleware/application/fileCleanUp");
-
+const { extractTextFromPdf } = require("../../extracting/process_uploaded_docs");
 
 // Constants
 const ALLOWED_FILE_TYPES = ["application/pdf"];
@@ -29,7 +30,7 @@ const ALLOWED_DOCUMENT_TYPES = [
   "Factory Registration Certificate",
   "Boiler Registration Certificate",
   "Landless Certificate",
-  "Permission for Water Usage"
+  "New Water Connection"
 ];
 
 // Configure multer for file uploads
@@ -80,7 +81,7 @@ exports.getAllDocumentTypes = (req, res) => {
     "Factory Registration Certificate",
     "Boiler Registration Certificate",
     "Landless Certificate",
-    "Permission for Water Usage"
+    "New Water Connection"
   ];
 
   res.json({ documentTypes: allTypes });
@@ -88,7 +89,7 @@ exports.getAllDocumentTypes = (req, res) => {
 
 //  Middleware: Submit a new application
 exports.submitApplication = [
-  body("firstName").trim().notEmpty().withMessage("First name is required"),
+body("firstName").trim().notEmpty().withMessage("First name is required"),
   body("lastName").trim().notEmpty().withMessage("Last name is required"),
   body("email").trim().isEmail().withMessage("Invalid email"),
   body("phone").trim().matches(/^\d{10}$/).withMessage("Phone number must be exactly 10 digits"),
@@ -111,7 +112,6 @@ exports.submitApplication = [
       .isISO8601()
       .withMessage("Invalid date format for requiredBy"),
 
-
 async (req, res) => {
 
     const errors = validationResult(req);
@@ -127,15 +127,25 @@ async (req, res) => {
         return res.status(401).json({ message: "Unauthorized: User not found" });
       }
 
+      console.log(">> Multer parsed files:", req.files);
+
       const { firstName, lastName, email, phone, agreementChecked, state, documentType, emergencyLevel, requiredBy } = req.body;
       const userId = req.user.userId;
 
 
-      const userExists = await User.findOne({ userId });
+      const userExists = await User.findOne({ userId: userId });
 
       if (!userExists) {
         return res.status(404).json({ message: "User not found" });
       }
+
+      // Fetch department dynamically from database
+      const departmentMapping = await DepartmentMapping.findOne({ documentType });
+      if (!departmentMapping) {
+        return res.status(400).json({ message: 'Invalid document type or no department mapping found' });
+      }
+
+      const department = departmentMapping.department;
 
       // Ensure files are uploaded
       if (!req.files || req.files.length === 0) {
@@ -143,9 +153,7 @@ async (req, res) => {
         console.log("No files uploaded");
         return res.status(400).json({ message: "No files uploaded" });
       }
-      if (!documentType) {
-        return res.status(400).json({ message: "Document type is required" });
-      }
+
       const uploadedFiles = {};
         req.files.forEach((file) => {
           const rawKey = file.fieldname.replace(/^files\[/, "").replace(/\]$/, "");
@@ -155,6 +163,8 @@ async (req, res) => {
           }
           uploadedFiles[key].push(path.relative(uploadDir, file.path));
         });
+
+        console.log("uploaded files:", uploadedFiles);
 
       const allUploadedPaths = Object.values(uploadedFiles).flat();
 
@@ -190,6 +200,25 @@ async (req, res) => {
       }
 
       const extractedDetails = {};
+      for (const [label, filePaths] of Object.entries(uploadedFiles)) {
+        if (filePaths?.length > 0) {
+          const filePath = path.join(uploadDir, filePaths[0]); // Only 1 file per field
+          try {
+            console.log("Starting OCR for", label, filePath);
+            const result = await extractTextFromPdf(filePath);
+            console.log("OCR result for", label, ":", result.status);
+            if (result.status === "success") {
+              extractedDetails[label] = result.text;
+            } else {
+              extractedDetails[label] = "OCR Failed";
+            }
+          } catch (err) {
+            extractedDetails[label] = "Extraction Error: " + err.message;
+          }
+        }
+      }
+
+      console.log("extracted details:", extractedDetails);
 
       // Save application
       const newApplication = new Certificate({
@@ -198,7 +227,8 @@ async (req, res) => {
         lastName,
         email,
         phone,
-        documentType: userDocument._id,
+        department,
+        documentType,
         state,
         files: uploadedFiles,
         flatFiles: allUploadedPaths,
@@ -206,24 +236,11 @@ async (req, res) => {
         emergencyLevel,
         requiredBy,
         status: "Pending",
-        extractedDetails: {},
+        extractedDetails,
       });
 
 
       await newApplication.save();
-      // console.log("Final payload:", {
-      //   applicant: userId,
-      //   firstName,
-      //   lastName,
-      //   email,
-      //   phone,
-      //   documentType: userDocument._id,
-      //   state,
-      //   files: uploadedFiles,
-      //   agreementChecked,
-      //   status: "Pending",
-      //   extractedDetails,
-      // });
 
       res.status(201).json({  success: true, message: "Application submitted successfully!", application: newApplication });
     } catch (error) {
@@ -251,34 +268,37 @@ exports.getApplications = async (req, res) => {
 
     const total = await Certificate.countDocuments(query);
     const rawApps = await Certificate.find(query)
-        .populate({ path: "documentType", model: "UserDocument", select: "documentType files submittedAt" })
+
         .select("-__v")
         .skip(skip)
         .limit(limit)
         .lean();
 
+    // 2) Pull out all the documentType strings
+    const docTypes = [...new Set(rawApps.map(app => app.documentType))];
+
+// 3) Fetch the matching UserDocuments by their documentType field
+    const userDocs = await UserDocument.find({
+      userId,
+      documentType: { $in: docTypes }
+    })
+        .select("documentType files submittedAt")
+        .lean();
+
+// 4) Build a map for quick lookup
+    const docMap = userDocs.reduce((m, doc) => {
+      m[doc.documentType] = doc;
+      return m;
+    }, {});
+
+    // 5) Merge into your final payload
     const applications = rawApps.map(app => ({
       ...app,
-      createdAtFormatted: new Date(app.createdAt).toLocaleString("en-IN", {
-        timeZone: "Asia/Kolkata",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      }),
-      updatedAtFormatted: new Date(app.updatedAt).toLocaleString("en-IN", {
-        timeZone: "Asia/Kolkata",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      }),
+      files:         docMap[app.documentType]?.files        || {},
+      submittedAt:   docMap[app.documentType]?.submittedAt  || app.createdAt,
+      createdAtFormatted: new Date(app.createdAt).toLocaleString("en-IN", { /* … */ }),
+      updatedAtFormatted: new Date(app.updatedAt).toLocaleString("en-IN", { /* … */ }),
     }));
-    
 
     res.status(200).json({
       success: true,

@@ -36,7 +36,7 @@ exports.getUserDocuments = async (req, res) => {
       "Factory Registration Certificate",
       "Boiler Registration Certificate",
       "Landless Certificate",
-      "Permission for Water Usage"
+      "New Water Connection"
     ];
 
     if (!userDocuments || userDocuments.length === 0) {

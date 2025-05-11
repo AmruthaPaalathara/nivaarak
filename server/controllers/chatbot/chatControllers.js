@@ -10,7 +10,7 @@ const Document = require("../../models/chatbot/documentSchema.js");
 const Chat = require("../../models/chatbot/chatSchema.js");
 const router = express.Router();
 const ChatArchive = require("../../models/chatbot/chatArchive.js");
-const User = require("../../models/authentication/userSchema.js");
+const { User } = require("../../models/authentication/userSchema.js");
 const redisClient = require("../../config/redisConfig");
 
 //ensuring that the message is not empty or whitespace

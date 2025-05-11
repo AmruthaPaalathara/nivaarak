@@ -8,9 +8,9 @@ exports.getUserApplicationStats = async (req, res) => {
             { $match: { applicant: userId } },
             {
                 $lookup: {
-                    from: "userdocuments", //  Ensure this matches your actual collection name
-                    localField: "documentType",
-                    foreignField: "_id",
+                    from: "userdocuments",
+                    localField: "documentType",      // the string field in Certificate
+                    foreignField: "documentType",    // match it against this field in UserDocument
                     as: "documentInfo"
                 }
             },

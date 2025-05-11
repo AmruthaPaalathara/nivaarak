@@ -13,9 +13,9 @@ const documentSchema = new mongoose.Schema( //creates documentSchema that define
       trim: true,
     },
 
-      extractedText: { type: String, trim: true, default:"" }, //stores extrtacted text from the file.
+      extractedText: { type: String, trim: true, default:"" }, //stores extracted text from the file.
     status: { //represents the current status of the document
-      type: String, //storeed as string
+      type: String, //stored as string
       enum: ["uploaded", "processing", "completed", "failed", "archived"],
       default: "uploaded",
     }, //indicates the status of the file processing.

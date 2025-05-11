@@ -18,7 +18,7 @@ const auditLogSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Add indexes for faster queries
-auditLogSchema.index({ performedByUser: 1 });
+auditLogSchema.index({ performedBy: 1 }); //  Correct
 auditLogSchema.index({ application: 1 });
 
 module.exports = mongoose.model("AuditLog", auditLogSchema);

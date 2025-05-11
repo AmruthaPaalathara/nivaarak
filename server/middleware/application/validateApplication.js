@@ -18,7 +18,7 @@ const allowedDocumentTypes = [
     "Factory Registration Certificate",
     "Boiler Registration Certificate",
     "Landless Certificate",
-    "Permission for Water Usage"
+    "New Water Connection"
 ];
 
 const validateApplicationForm = [
@@ -57,15 +57,27 @@ const validateApplicationForm = [
     .notEmpty()
     .withMessage("Document type is required")
     .isIn(allowedDocumentTypes)
-    .withMessage("Invalid document type"),
+      .withMessage("Please select a valid document type from the list provided"),
 
-  body("state")
+    body("state")
     .trim()
     .notEmpty()
     .withMessage("State is required")
     .escape(), // Sanitize to prevent XSS
 
-  body("agreementChecked")
+    body("emergencyLevel")
+        .optional()
+        .isIn(["Low", "Medium", "High"])
+        .withMessage("Invalid emergency level"),
+
+    body("requiredBy")
+        .optional()
+        .isISO8601()
+        .withMessage("Invalid date format for deadline (requiredBy)")
+        .toDate(),
+
+
+    body("agreementChecked")
       .custom((value) => {
         if (!(value === true || value === "true" || value === "on")) {
           throw new Error("You must agree to the terms and conditions.");
