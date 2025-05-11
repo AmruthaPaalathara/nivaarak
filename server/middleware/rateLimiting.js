@@ -3,7 +3,7 @@ const rateLimit = require("express-rate-limit");
 //  Custom Rate Limiting for Login
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5, // ⬅️ Reduce to 5 failed attempts for stronger security
+    max: 100000, // ⬅️ Reduce to 5 failed attempts for stronger security
     message: {
         success: false,
         error: "Too many login attempts. Try again in 15 minutes.",
@@ -14,7 +14,7 @@ const loginLimiter = rateLimit({
 
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 50, // Limit each IP to 50 requests per window
+    max: 100, // Limit each IP to 50 requests per window
     message: {
       success: false,
       error: "Too many requests. Try again in 15 minutes.",
@@ -29,4 +29,17 @@ const authLimiter = rateLimit({
     message: "Too many requests, please try again later.",
   });
 
-module.exports = { loginLimiter , authLimiter , limiter};
+const adminDashboardLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 500, // ⬆️ Increase limit for dashboard requests
+    message: "Too many requests for admin dashboard. Try again later.",
+});
+
+const refreshLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000,  // 1 minute
+    max: 1000,
+    skipSuccessfulRequests: true
+});
+
+
+module.exports = { loginLimiter , authLimiter , limiter, adminDashboardLimiter, refreshLimiter };

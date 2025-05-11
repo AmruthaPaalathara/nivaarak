@@ -12,9 +12,7 @@ import SpeechRecognition from "react-speech-recognition";
 import axiosInstance from "../../utils/api";
 import API from "../../utils/api"; // Import the pre-configured axios instance
 
-
 console.log("API URL:", process.env.REACT_APP_API_URL);
-
 console.log(" ChatWithUpload component is rendering...");
 
 const fetchDocumentTextFromAPI = async (documentId) => {

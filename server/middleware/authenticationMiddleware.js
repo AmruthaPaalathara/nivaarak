@@ -18,15 +18,12 @@ const isAuthenticated = async (req, res, next) => {
       return res.status(400).json({ success: false, error: "Invalid userId in token" });
     }
 
-
     const user = await User.findOne({ userId }); //  'id' should match userId field in DB
 
     if (!user) {
       console.log("User NOT FOUND in DB");
       return res.status(401).json({ message: "Invalid token" });
     }
-
-
 
     req.user = {
       userId: user.userId, //  This gets attached

@@ -24,7 +24,6 @@ const ApplicationForm = () => {
 
   });
 
-
   const [validated, setValidated] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -35,7 +34,6 @@ const ApplicationForm = () => {
   const [documentTypes, setDocumentTypes] = useState([]);
   const [isFormValid, setIsFormValid] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-
 
   // Define document types and required files
   const documentRequirements = {
@@ -55,7 +53,7 @@ const ApplicationForm = () => {
     "Factory Registration Certificate": ["Factory Layout Plan", "Aadhaar Card", "Proof of Ownership"],
     "Boiler Registration Certificate": ["Manufacturer approval","Aadhaar Card","Technical Specification"],
     "Landless Certificate": ["Revenue Records","Aadhaar Card"],
-    "Permission for Water Usage": ["Proof of Land Ownership","Aadhaar Card"],
+    "New Water Connection": ["Proof of Land Ownership","Aadhaar Card"],
   };
 
   const finalDocumentTypes = documentTypes.length > 0 ? documentTypes : Object.keys(documentRequirements);
@@ -92,7 +90,6 @@ const ApplicationForm = () => {
     setErrors(newErrors);
   };
 
-
   // Handle file uploads
   const handleFileChange = (e) => {
     const {name, files} = e.target;
@@ -128,10 +125,9 @@ const ApplicationForm = () => {
   // Handle form submission
   const handleSubmit = async (event) => {
     event.preventDefault();
-
     let validationErrors = [];
 
-    //  Validations
+    // Validations
     if (!/^[A-Za-z]+$/.test(formData.firstName)) {
       validationErrors.push({ field: "firstName", message: "First name must contain only alphabets." });
     }
@@ -147,20 +143,20 @@ const ApplicationForm = () => {
     if (!formData.documentType) {
       validationErrors.push({ field: "documentType", message: "Please select a document type." });
     }
+
+    // Check if documentRequirements for the selected documentType is defined
     if (formData.documentType && documentRequirements[formData.documentType]) {
-
-      if (!documentRequirements || !documentRequirements[formData.documentType]) {
-        console.error("❌ documentRequirements is missing or not defined.");
-        return;
-      }
-
       const requiredFiles = documentRequirements[formData.documentType];
       requiredFiles.forEach((fileType) => {
         if (!formData.files[fileType]) {
           validationErrors.push({ field: fileType, message: `Please upload the required file: ${fileType}` });
         }
       });
+    } else {
+      console.error("❌ documentRequirements is missing or not defined.");
+      validationErrors.push({ field: "documentType", message: "Document type is not properly defined." });
     }
+
     if (!formData.agreementChecked) {
       validationErrors.push({ field: "agreementChecked", message: "You must agree to the terms & conditions." });
     }
@@ -187,24 +183,18 @@ const ApplicationForm = () => {
       formDataToSend.append("emergencyLevel", formData.emergencyLevel);
       formDataToSend.append("requiredBy", formData.requiredBy);
 
-
       Object.entries(formData.files).forEach(([key, file]) => {
         formDataToSend.append(key, file);
       });
 
       const token = localStorage.getItem("accessToken");
 
-      //  Step 1: Submit Application
-      const applyResponse = await API.post("/certificates/submit", formDataToSend, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-          "Authorization": `Bearer ${token}`
-        },
-      });
+      // Step 1: Submit Application
+      const applyResponse = await API.post("/certificates/submit", formDataToSend);
+      console.log("apply response:", applyResponse);
 
       if (applyResponse.data.success) {
         console.log("Form successfully submitted:", applyResponse.data);
-
         const userId = applyResponse.data.application.applicant;
 
         if (!userId) {
@@ -213,19 +203,20 @@ const ApplicationForm = () => {
           return;
         }
 
-        //  Step 2: Generate PDF
+        // Step 2: Generate PDF
         const pdfGenerateResponse = await API.post("/pdf/generate-pdf", {
           userId: userId,
           documentType: formData.documentType,
         }, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        console.log(" Saved Generated PDF with userId:", userId, "and documentType:", formData.documentType.trim().toLowerCase());
 
-        console.log(" PDF Generated:", pdfGenerateResponse.data);
+        console.log("Saved Generated PDF with userId:", userId, "and documentType:", formData.documentType.trim().toLowerCase());
 
-        // 🔹 Step 3: Send Email
-        console.log(" About to send email...");
+        console.log("PDF Generated:", pdfGenerateResponse.data);
+
+        // Step 3: Send Email
+        console.log("About to send email...");
         const emailSendResponse = await API.post("/email/send-email", {
           email: formData.email,
           documentType: formData.documentType,
@@ -233,27 +224,26 @@ const ApplicationForm = () => {
         });
 
         if (emailSendResponse.data.success) {
-          console.log(" Email sent:", emailSendResponse.data);
+          console.log("Email sent:", emailSendResponse.data);
         } else {
-          console.warn(" Email sending failed:", emailSendResponse.data.message);
+          console.warn("Email sending failed:", emailSendResponse.data.message);
           toast.warning("Application submitted, but email not sent.");
         }
 
-        // 🔹 Step 4: Navigate to homepage
+        // Step 4: Navigate to homepage
         console.log("Navigating to homepage...");
         setShowSuccessModal(true);
         setTimeout(() => {
           setShowSuccessModal(false);
           navigate("/");
         }, 2000);
-
       } else {
         console.warn("Form submission failed:", applyResponse.data.message);
         toast.error("Failed to submit the application.");
       }
 
     } catch (error) {
-      console.error(" Error during submit or PDF/Email:", error);
+      console.error("Error during submit or PDF/Email:", error);
       toast.error("An unexpected error occurred.");
     } finally {
       setIsSubmitting(false);
@@ -318,7 +308,7 @@ const ApplicationForm = () => {
           "Factory Registration Certificate",
           "Boiler Registration Certificate",
           "Landless Certificate",
-          "Permission for Water Usage"
+          "PNew Water Connection"
         ]);
       }
     };
@@ -330,7 +320,7 @@ const ApplicationForm = () => {
     const {firstName, lastName, email, phone, state, documentType, agreementChecked} = formData;
 
     const requiredDocs = documentRequirements[documentType] || [];
-    const uploadedFilesValid = requiredDocs.every(doc => fileNames[doc]);
+    const uploadedFilesValid = requiredDocs.length > 0 && requiredDocs.every(doc => fileNames[doc]);
     const allFieldsFilled =
         firstName.trim() &&
         lastName.trim() &&

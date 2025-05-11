@@ -1,79 +1,100 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+// src/contexts/AuthContext.js
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef
+} from "react";
 import { useNavigate } from "react-router-dom";
+import API from "../utils/api";
 
-// Create the AuthContext
-const AuthContext = createContext();
+// 1) Create the context with default values
+const AuthContext = createContext({
+  isAuthenticated: false,
+  login: () => {},
+  logout: () => {}
+});
 
-// AuthProvider component to wrap around your application
+// 2) Provider component
 export function AuthProvider({ children }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const didAttemptRefresh = useRef(false);
   const navigate = useNavigate();
 
-  // Check for an existing token on initial load
+  // On mount: try to rehydrate access token or perform one refresh
   useEffect(() => {
-    const token = localStorage.getItem("accessToken") ;
-    if (token) {
+    // 1) If we already have an access token, bail out
+    const accessToken = localStorage.getItem("accessToken");
+    if (accessToken) {
       setIsAuthenticated(true);
-    } else {
-      // Try to refresh token using the refresh cookie
-      fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/auth/refresh-token`, {
-        method: "POST",
-        credentials: "include", // This sends cookies (like refreshToken)
-      })
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.accessToken) {
-              localStorage.setItem("accessToken", data.accessToken); // Or sessionStorage based on preference
-              setIsAuthenticated(true);
-            } else {
-              navigate("/signin");
-            }
-          })
-          .catch(() => {
-            navigate("/signin");
-          });
+      return;
     }
-  }, []);
 
-  // Login function
+    // 2) Only try once
+    if (didAttemptRefresh.current) {
+      navigate("/signin");
+      return;
+    }
+    didAttemptRefresh.current = true;
+
+    // 3) If there’s no refresh cookie, skip the network call and go to signin
+    const hasRefreshCookie = document.cookie
+        .split(";")
+        .some(c => c.trim().startsWith("refreshToken="));
+    if (!hasRefreshCookie) {
+      navigate("/signin");
+      return;
+    }
+
+    // 4) Only now do we call the server
+    API.post("/auth/refresh-token")
+        .then(res => {
+          const newToken = res.data.accessToken;
+          if (newToken) {
+            localStorage.setItem("accessToken", newToken);
+            setIsAuthenticated(true);
+          } else {
+            navigate("/signin");
+          }
+        })
+        .catch(() => {
+          navigate("/signin");
+        });
+  }, [navigate]);
+
+  // Expose login function
   const login = (token, rememberMe = false) => {
     setIsAuthenticated(true);
     if (rememberMe) {
-      localStorage.setItem("accessToken", token); // Store token in localStorage for persistent login
+      localStorage.setItem("accessToken", token);
     } else {
-      sessionStorage.setItem("accessToken", token); // Store token in sessionStorage for session-based login
+      sessionStorage.setItem("accessToken", token);
     }
   };
 
-  // Logout function
+  // Expose logout function
   const logout = async () => {
-
     try {
-      await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:3001'}/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-      });
+      await API.post("/auth/logout");
     } catch (err) {
       console.error("Logout error:", err);
     }
-
     setIsAuthenticated(false);
-    localStorage.removeItem("accessToken"); // Clear token from localStorage
-    sessionStorage.removeItem("accessToken"); // Clear token from sessionStorage
+    localStorage.removeItem("accessToken");
+    sessionStorage.removeItem("accessToken");
     navigate("/signin");
   };
 
-  // Value to be provided by the context
-  const value = {
-    isAuthenticated,
-    login,
-    logout,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  // Provide context value
+  return (
+      <AuthContext.Provider value={{ isAuthenticated, login, logout }}>
+        {children}
+      </AuthContext.Provider>
+  );
 }
 
-// Custom hook to use the AuthContext
+// Custom hook for consuming the auth context
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {

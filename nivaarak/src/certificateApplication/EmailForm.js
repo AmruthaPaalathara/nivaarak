@@ -18,7 +18,6 @@ const EmailForm = ({ userId }) => {
       return;
     }
 
-
     const formData = new FormData();
     formData.append("email", email);
     formData.append("document", document);

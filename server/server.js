@@ -12,7 +12,6 @@ const path = require("path")
 const fs = require("fs");
 mongoose.set("debug", true);
 
-
 const authRoutes = require("./routes/authentication/authRoutes");
 const certificateRoutes = require("./routes/application/certificateApplicationRoutes.js");
 const emailRoutes = require("./routes/application/emailRoutes");
@@ -26,6 +25,8 @@ const userRoutes = require("./routes/Dashboard/dashboardRoutes");
 const chartRoutes = require('./routes/Dashboard/userCharts/chartRoutes');
 const adminRoutes = require("./routes/Dashboard/adminCharts/chartRoutes");
 const eligibilityRoutes = require("./routes/eligibility/eligibilityRoutes");
+const { adminDashboardLimiter } = require("./middleware/rateLimiting");
+const userTableRoutes = require("./routes/Dashboard/userTableRoutes");
 
 const requiredEnvVars = [
   "JWT_SECRET",
@@ -37,6 +38,13 @@ const requiredEnvVars = [
   "EMAIL_USER",
   "EMAIL_PASS"
 ];
+requiredEnvVars.forEach((key) => {
+  if (!process.env[key]) {
+    console.error(`❌ Missing environment variable: ${key}`);
+    process.exit(1);
+  }
+});
+
 
 const app = express();
 
@@ -51,7 +59,7 @@ app.use(helmet()); // Set security headers
 app.use(morgan("combined")); // Log incoming requests
 
 // CORS Configuration
-const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : ["http://localhost:3000", "http://localhost:3001"];
+const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://localhost:3003", "http://localhost:3003"];
 app.use(cors({
   origin: allowedOrigins,
   credentials: true,
@@ -65,9 +73,9 @@ const globalLimiter = rateLimit({
   max: process.env.RATE_LIMIT_MAX ? parseInt(process.env.RATE_LIMIT_MAX, 10) : 100, // Default to 100 requests per window if not set
   message: "Too many requests, please try again later.",
 });
-app.use(globalLimiter);
 
-app.set("trust proxy", 1); // Trust the first proxy in front of your server
+
+app.set("trust proxy", 1); // Needed for secure cookies if behind a reverse proxy
 
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.originalUrl}`);
@@ -76,22 +84,24 @@ app.use((req, res, next) => {
   next();
 });
 
+const API_BASE = "/api";
 
 // Routes
-app.use("/api/auth", authRoutes); // Authentication does not require login
-app.use("/api/generate-pdf", isAuthenticated, generatePdfRoutes);
-app.use("/api/certificates", certificateRoutes);
-app.use("/api/chat", chatbotRoutes);
-app.use("/api/documents", documentRouter);
-// Then mount it just like others:
-app.use("/api/email", emailRoutes);
-app.use("/api/pdf", generatePdfRoutes);
-app.use('/api/priority-applications', priorityApplicationRoutes);
-app.use("/api/users", userRoutes);
-app.use('/api/userCharts', chartRoutes);
-app.use("/api/admin-dashboard", adminRoutes);
-app.use("/api/eligibility", eligibilityRoutes);
 
+app.use(`${API_BASE}/auth`, authRoutes); // Authentication does not require login
+app.use(`${API_BASE}/pdf`, isAuthenticated, generatePdfRoutes);
+app.use(`${API_BASE}/certificates`, certificateRoutes);
+app.use(`${API_BASE}/chat`, chatbotRoutes);
+app.use(`${API_BASE}/documents`, documentRouter);
+// Then mount it just like others:
+app.use(`${API_BASE}/email`, emailRoutes);
+app.use(`${API_BASE}/priority-applications`, priorityApplicationRoutes);
+app.use(`${API_BASE}/users`, userRoutes);
+app.use(`${API_BASE}/userCharts`, chartRoutes);
+app.use(`${API_BASE}/admin-dashboard`,adminDashboardLimiter);
+app.use(`${API_BASE}/admin-dashboard`, adminRoutes);
+app.use(`${API_BASE}/eligibility`, eligibilityRoutes);
+app.use(`${API_BASE}/userTable`, userTableRoutes);
 
 // Connect to MongoDB
 const connectToMongoDB = async (retries = 5) => {

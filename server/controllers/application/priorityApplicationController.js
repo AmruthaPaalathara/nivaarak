@@ -12,8 +12,8 @@ const submitPriorityApplication = async (req, res) => {
     const cleanedType = certificateType.trim();
     const priority = getApplicationPriority(cleanedType);
 
-    console.log("➡️ Incoming request: POST /api/priority-applications/submit");
-    console.log("📝 Application Received:");
+    console.log(" Incoming request: POST /api/priority-applications/submit");
+    console.log(" Application Received:");
     console.log(`User ID: ${userId}`);
     console.log(`Certificate Type: ${cleanedType}`);
     console.log(`Assigned Priority: ${priority}`);

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Container, Row, Col, Card, Accordion, Spinner, Alert, Button} from 'react-bootstrap';
+import { Container, Row, Col, Card, Accordion, Spinner, Alert, Button } from 'react-bootstrap';
 import { useNavigate } from "react-router-dom";
 import API from "../utils/api";
 import ApplicationSummaryChart from "./UserStatsCharts";
@@ -8,7 +8,8 @@ import DocumentTypeChart from './DocumentTypeChart';
 import AdminStatusChart from "./AdminStatusChart";
 import UserApplicationsTable from "./UserApplicationTable";
 import AdminApplicationsTable from "./AdminApplicationTable";
-
+import DepartmentApplicationsTable from "./DepartmentApplicationsTable";
+import StatusApplicationsTable from "./StatusApplicationsTable";
 
 const Dashboard = () => {
   const [userData, setUserData] = useState(null);
@@ -18,19 +19,22 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showDrilldown, setShowDrilldown] = useState(false);
-  const [isSidebarOpen, setSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState(userData?.role === "admin" ? "adminApplications" : "userTable");
-
+  const [activeTab, setActiveTab] = useState("userDashboard");
   const navigate = useNavigate();
 
   const getUserRoleFromToken = () => {
     const token = localStorage.getItem("accessToken");
-    if (!token) return null;
+    if (!token) {
+      navigate("/login");
+      return null;
+    }
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
       return payload?.role || null;
     } catch (error) {
-      console.error("Invalid token:", error);
+      console.error("Invalid token format:", error);
+      localStorage.removeItem("accessToken");
+      navigate("/login");
       return null;
     }
   };
@@ -52,14 +56,13 @@ const Dashboard = () => {
           role === "admin"
               ? API.get("/admin-dashboard", { headers: { Authorization: `Bearer ${token}` } })
               : API.get("/users/profile", { headers: { Authorization: `Bearer ${token}` } }),
-          API.get(role === "admin" ? "/admin-dashboard/admin-applications" : "/userCharts/user-applications", { headers: { Authorization: `Bearer ${token}` } })
+          API.get(role === "admin" ? "/admin-dashboard/admin-applications" : "/userCharts/user-applications", {
+            headers: { Authorization: `Bearer ${token}` }
+          })
         ]);
 
-        console.log("Profile API Response:", profileRes.data);  // ✅ Debug API
-        console.log("Chart API Response:", chartRes.data);
-
         if (role === "admin") {
-          setUserData({ username: "admin", email: "admin@nivaarak.com", role: "admin" });
+          setUserData({ username: "admin", email: "admin@nivaarak.com", role: "admin", phone: "N/A" });
           setApplications(profileRes.data.data);
         } else {
           const user = profileRes.data.data.user;
@@ -81,34 +84,20 @@ const Dashboard = () => {
     fetchData();
   }, [navigate]);
 
-  const handleStatusUpdate = async (appId, status) => {
-    try {
-      const response = await API.put(`/certificates/update-status/${appId}`, { status });
-      if (response.data.success) {
-        setApplications(prev => prev.map(app => app._id === appId ? { ...app, status } : app));
-      } else {
-        alert(response.data.message || "Failed to update status");
-      }
-    } catch (err) {
-      alert("Error updating status: " + (err.response?.data?.message || err.message));
-    }
-  };
-
   return (
       <Container fluid className="mt-4">
         <Row>
-          <Col md={3} className={`sidebar ${isSidebarOpen ? "open" : "collapsed"}`}>
-
-            {/* Personal Info Section */}
-            <Accordion defaultActiveKey="0" className="mb-3">
-            <Accordion.Item eventKey="0">
+          {/* Sidebar */}
+          <Col md={3}>
+            <Accordion defaultActiveKey="info">
+              <Accordion.Item eventKey="info">
                 <Accordion.Header>👤 Personal Info</Accordion.Header>
                 <Accordion.Body>
                   {userData ? (
                       <>
                         <p><strong>Username:</strong> {userData.username}</p>
                         <p><strong>Email:</strong> {userData.email}</p>
-                        <p><strong>Phone:</strong> {userData.phone}</p>
+                        {userData.phone && <p><strong>Phone:</strong> {userData.phone}</p>}
                         <p><strong>Role:</strong> {userData.role}</p>
                       </>
                   ) : (
@@ -118,71 +107,92 @@ const Dashboard = () => {
               </Accordion.Item>
             </Accordion>
 
-            {/* Sidebar Navigation */}
-            <Accordion defaultActiveKey="0">
-              <Accordion.Item eventKey="0">
-                <Accordion.Header>🏢 Filter by Department</Accordion.Header>
+            <Accordion defaultActiveKey="nav">
+              <Accordion.Item eventKey="nav">
+                <Accordion.Header>{userData?.role === "admin" ? "Filter Options" : "Submitted Documents"}</Accordion.Header>
                 <Accordion.Body>
                   <ul style={{ listStyleType: "none", padding: 0 }}>
-                  <li style={{ cursor: "pointer", padding: "5px" }} onClick={() => setActiveTab("revenue")}>Revenue</li>
-                    <li style={{ cursor: "pointer", padding: "5px" }} onClick={() => setActiveTab("education")}>Education</li>
-                    <li style={{ cursor: "pointer", padding: "5px" }} onClick={() => setActiveTab("welfare")}>Welfare</li>
+                    {userData?.role === "admin" ? (
+                        <>
+                          <li style={{ cursor: "pointer", padding: "5px" }} onClick={() => setActiveTab("department")}>
+                            Filter by Department
+                          </li>
+                          <li style={{ cursor: "pointer", padding: "5px" }} onClick={() => setActiveTab("status")}>
+                            Filter by Status
+                          </li>
+                          <li style={{ cursor: "pointer", padding: "5px" }} onClick={() => setActiveTab("dashboardOverview")}>
+                            Dashboard Overview
+                          </li>
+                          <li style={{ cursor: "pointer", padding: "5px" }} onClick={() => setActiveTab("adminApplications")}>
+                            View All Applications
+                          </li>
+                        </>
+                    ) : (
+                        <li style={{ cursor: "pointer", padding: "5px" }} onClick={() => setActiveTab("userTable")}>
+                          View Submitted Documents
+                        </li>
+                    )}
                   </ul>
                 </Accordion.Body>
               </Accordion.Item>
             </Accordion>
           </Col>
 
-
+          {/* Main Content */}
           <Col md={9}>
             <Card className="shadow-sm p-4">
-              <Card.Title>{userData?.role === 'admin' ? 'Admin Dashboard' : 'User Dashboard'}</Card.Title>
+              <Card.Title>{userData?.role === "admin" ? "Admin Dashboard" : "User Dashboard"}</Card.Title>
               <Card.Body>
                 {loading && <Spinner animation="border" />}
                 {error && <Alert variant="danger">{error}</Alert>}
 
-                {userData?.role === "admin" ? (
+                {/* USER VIEW */}
+                {userData?.role === "user" && (
                     <>
-                      <AdminStatusChart />
-                      <ApplicationByTypeChart
-                          title="Applications by Document Type"
-                          apiEndpoint="/admin-dashboard/admin-applications"
-                      />
-                      {/* Applications Overview Section for Admins */}
-                      {activeTab === "adminApplications" && (
-                          <Card className="mt-4 shadow-sm p-3">
-                            <Card.Title>📄 Applications Overview</Card.Title>
-                            <Card.Body>
-                              {loading && <Spinner animation="border" />}
-                              {error && <Alert variant="danger">{error}</Alert>}
-                              <AdminApplicationsTable />
-                            </Card.Body>
-                          </Card>
+                      {activeTab !== "userTable" ? (
+                          <>
+                            <ApplicationSummaryChart
+                                total={stats.totalSubmitted}
+                                emergency={stats.emergencyCount}
+                                documentStats={documentStats}
+                                role="user"
+                                chartTitle="Your Application Stats"
+                            />
+                            <Button
+                                variant="secondary"
+                                onClick={() => setShowDrilldown(prev => !prev)}
+                                className="mb-3"
+                            >
+                              {showDrilldown ? "Hide Document Drilldown" : "Show Document Drilldown"}
+                            </Button>
+                            {showDrilldown && (
+                                <DocumentTypeChart
+                                    documentStats={documentStats}
+                                    title="Submitted Document Types"
+                                    seriesName="Submissions"
+                                    height={400}
+                                />
+                            )}
+                          </>
+                      ) : (
+                          <UserApplicationsTable />
                       )}
                     </>
-                ) : (
-                    stats && (
-                        <>
-                          <ApplicationSummaryChart
-                              total={stats.totalSubmitted}
-                              emergency={stats.emergencyCount}
-                              documentStats={documentStats}
-                              role={userData?.role || "user"}
-                              chartTitle="Your Application Stats"
+                )}
+
+                {/* ADMIN VIEW */}
+                {userData?.role === "admin" && (
+                    <>
+                      {activeTab === "dashboardOverview" && (
+                          <ApplicationByTypeChart
+                              title="Applications by Document Type"
+                              apiEndpoint="/admin-dashboard/admin-applications"
                           />
-
-                          {activeTab === "userTable" && <UserApplicationsTable />}{activeTab === "userTable" && <UserApplicationsTable />}
-
-                          {showDrilldown && (
-                              <DocumentTypeChart
-                                  documentStats={documentStats}
-                                  title="Submitted Document Types"
-                                  seriesName="Submissions"
-                                  height={400}
-                              />
-                          )}
-                        </>
-                    )
+                      )}
+                      {activeTab === "department" && <DepartmentApplicationsTable />}
+                      {activeTab === "status" && <StatusApplicationsTable />}
+                      {activeTab === "adminApplications" && <AdminApplicationsTable />}
+                    </>
                 )}
               </Card.Body>
             </Card>

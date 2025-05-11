@@ -1,9 +1,9 @@
-// ===== server/controllers/Eligibility/eligibilityController.js =====
+
 const tesseract = require("tesseract.js");
 const path = require("path");
 const fs = require("fs");
 const Certificate = require("../../models/application/certificateApplicationSchema");
-const User = require("../../models/authentication/userSchema");
+const{ User } = require("../../models/authentication/userSchema");
 const EligibilityCriteria = require("../../models/eligibility/eligibilitySchema");
 const nodemailer = require("nodemailer");
 
@@ -17,7 +17,7 @@ const verifyEligibility = async (req, res) => {
         const { applicantId, certificateType } = req.body;
         const files = req.files;
 
-        const applicant = await User.findOne({ id: applicantId });
+        const applicant = await User.findOne({ userId: applicantId });
         if (!applicant) return res.status(404).json({ error: "Applicant not found" });
 
         const criteria = await EligibilityCriteria.findOne({ certificateType });

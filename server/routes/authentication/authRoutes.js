@@ -7,19 +7,15 @@ const validateRegistration = require("../../middleware/authenticationMiddleware/
 const validateLogin = require("../../middleware/authenticationMiddleware/validateLogin.js");
 const validateForgotPassword = require("../../middleware/authenticationMiddleware/validateForgotPassword.js");
 const { authenticateJWT } = require("../../middleware/authenticationMiddleware/authMiddleware.js");
-const { loginLimiter, authLimiter } = require("../../middleware/rateLimiting.js");
+const { loginLimiter, authLimiter, refreshLimiter } = require("../../middleware/rateLimiting.js");
 
 // User Registration
 router.post("/register", authLimiter,validateRegistration, authController.registerUser);
 
-
 // User Login
-router.post("/login", (req, res, next) => {
+router.post("/login", validateLogin, authController.loginUser);
 
-    next(); // continue to controller
-}, authLimiter, loginLimiter, validateLogin, authController.loginUser);
-
-// POST /auth/refresh-token
+// POST /auth/refresh-token (no throttle – so our auto-retries can’t be 429’d)
 router.post("/refresh-token", authController.refreshToken);
 
 // Verify Username for Forgot Password
@@ -32,15 +28,13 @@ router.post("/forgot-password", authLimiter, validateForgotPassword, authControl
 router.post("/reset-password", authLimiter, validateForgotPassword, authController.resetPassword);
 
 // Get User Profile (Protected Route)
-router.get("/profile", authenticateJWT(), authLimiter, authController.getUserProfile);
+router.get("/profile", authenticateJWT(), authController.getUserProfile);
 
 // Logout User (Protected Route)
-router.post("/logout", authenticateJWT(),authLimiter, authController.logoutUser);
+router.post("/logout", authenticateJWT(), authController.logoutUser);
 
 router.get("/test", (req, res) => {
     res.send("Auth route works!");
 });
-
-
 
 module.exports = router;

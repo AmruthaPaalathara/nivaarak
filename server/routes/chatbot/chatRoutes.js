@@ -12,7 +12,6 @@ const  redisClient   = require("../../config/redisConfig");
 const { findRelevantText } = require("../../controllers/chatbot/chatControllers")
 const { v4: uuidv4 } = require("uuid");
 
-
 const callAIService = async (userMessage) => {
   try {
     console.log("Calling local Groq server with message:", userMessage);

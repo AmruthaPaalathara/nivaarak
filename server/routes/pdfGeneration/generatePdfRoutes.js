@@ -16,13 +16,7 @@ const authMiddleware = (req, res, next) => {
 };
 
 //  Generate PDF Route (POST, not GET)
-router.post(
-    "/generate-pdf",
-
-    fetchLlamaData,  //  AI content middleware
-    pdfController.generatePDF
-);
-
+router.post("/generate-pdf", fetchLlamaData, pdfController.generatePDF );
 
 // Error Handling Middleware
 router.use(errorHandler);

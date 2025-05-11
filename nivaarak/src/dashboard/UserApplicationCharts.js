@@ -16,22 +16,20 @@ const ApplicationByTypeChart = ({
             try {
                 console.log("API Endpoint being called:", apiEndpoint);
                 const response = await API.get(apiEndpoint);
-                console.log("Chart API Response:", response.data);
                 const result = response.data;
-
-                if (result.success) {
+                if (result?.success !== false) {
                     setTotalData(result.totalApplications || []);
                     setStatusData(result.statusBreakdown || []);
+                    console.log("Chart Data Response:", result);
                 } else {
+                    console.warn("API responded with success=false:", result);
                     setError(result.message || "Failed to fetch data.");
                 }
-            } catch (error) {
-                console.error("Chart fetch error:", error);
+            } catch (err) {
+                console.error("Chart fetch error:", err);
                 setError("Failed to fetch chart data. Please try again.");
             }
         };
-
-        console.log("Chart Data Response:", totalData);
 
         if (!externalData) {
             fetchChartData();
@@ -41,47 +39,59 @@ const ApplicationByTypeChart = ({
         }
     }, [apiEndpoint, externalData]);
 
-    // Memoized Highcharts Configuration
+    // Chart config (memoized for performance)
     const chartOptions = useMemo(() => ({
         chart: { type: 'column' },
         title: { text: title },
-        xAxis: { categories: totalData.map(item => item.documentType), title: { text: 'Document Type' } },
-        yAxis: { min: 0, title: { text: 'Number of Applications' }, stackLabels: { enabled: true } },
+        xAxis: {
+            categories: totalData.map(item => item.documentType),
+            title: { text: 'Document Type' }
+        },
+        yAxis: {
+            min: 0,
+            title: { text: 'Number of Applications' },
+            stackLabels: { enabled: true }
+        },
         tooltip: { shared: true },
-        plotOptions: { column: { stacking: 'normal' } },
+        plotOptions: {
+            column: { stacking: 'normal' }
+        },
         series: ["Approved", "Pending", "Rejected"].map(status => ({
             name: status,
             data: totalData.map(doc => {
-                const entry = statusData.find(item => item.documentType === doc.documentType && item.status === status);
+                const entry = statusData.find(item =>
+                    item.documentType === doc.documentType && item.status === status
+                );
                 return entry ? entry.count : 0;
             })
-        }))
+        })),
+        credits: { enabled: false }
     }), [totalData, statusData, title]);
 
     useEffect(() => {
         if (typeof window.Highcharts === "undefined") {
-            console.error("Highcharts not loaded.");
+            console.error("Highcharts is not loaded globally.");
             return;
         }
 
         if (window.Highcharts && chartContainer.current && totalData.length > 0) {
             window.Highcharts.chart(chartContainer.current, chartOptions);
         }
-    }, [chartOptions]);
+    }, [chartOptions, totalData]);
 
-    // Handle error or empty data
+    // Handle error or empty chart
     if (error) {
         return <p style={{ color: "red" }}>{error}</p>;
     }
 
-    console.log("Chart API Data:", totalData);
-    console.log("Status Breakdown Data:", statusData);
-
-    if (!totalData.length) {
+    const processedData = totalData?.length > 0 ? totalData : [{ documentType: "No Data", count: 0 }];
+    if (processedData.length === 1 && processedData[0].documentType === "No Data") {
         return <p>No application data available.</p>;
     }
 
-    return <div ref={chartContainer} style={{ width: '100%', height: '500px' }} />;
+    return (
+        <div ref={chartContainer} style={{ width: '100%', height: '500px', maxWidth: '100%' }} />
+    );
 };
 
 export default ApplicationByTypeChart;

@@ -9,8 +9,6 @@ const verifyRefreshToken = require("../../middleware/verifyRefreshToken");
 const { isTokenRevoked } = require('../../middleware/authenticationMiddleware/authMiddleware');
 const { v4: uuidv4 } = require('uuid');
 
-
-
 // Rate limiting for login and registration (prevents brute-force attacks)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -114,7 +112,7 @@ exports.loginUser = async (req, res) => {
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",  // Use secure cookies in production
-      sameSite: "Strict",  // Prevents CSRF attacks
+      sameSite: "None",  // Prevents CSRF attacks
       maxAge: 30 * 24 * 60 * 60 * 1000  // 7 days
     });
     //  Generate unique session ID
@@ -312,7 +310,7 @@ exports.refreshToken = async (req, res) => {
       res.cookie("refreshToken", newRefreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: "Strict",
+        sameSite: "None",
         maxAge: 30 * 24 * 60 * 60 * 1000, // 7 days
       });
 

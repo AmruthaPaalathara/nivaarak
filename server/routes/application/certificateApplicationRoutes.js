@@ -14,7 +14,6 @@ const validateApplicationForm = require("../../middleware/application/validateAp
 const { appUpload, handleUploadErrors } = require("../../middleware/multerConfigs");
 const {authenticateUser} = require("../../middleware/authenticationMiddleware/authMiddleware"); // For file uploads
 
-
 // In development only: mock middleware
 if (process.env.NODE_ENV === 'development') {
   global.limiter = (req, res, next) => next();

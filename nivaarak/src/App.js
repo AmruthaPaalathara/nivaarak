@@ -37,14 +37,11 @@ const handleUploadSuccess = (data) => {
     if (data?.data?.extractedText) {
         console.log("Extracted Text:", data.data.extractedText);
     }
-
     // You can add more logic later (e.g., update state, trigger chat, etc.)
 };
 
-
   const AppContent = () => {
     const {isAuthenticated} = useAuth();
-
 
     return (
         <>

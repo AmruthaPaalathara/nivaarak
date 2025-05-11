@@ -15,9 +15,8 @@ const isAuthenticated = require("../../middleware/authenticationMiddleware");
 // Ensure the upload folder exists
 fs.mkdirSync(uploadFolder, { recursive: true });
 
-
 //  Configure Multer for File Uploads (Disk Storage)
-const storage = multer.diskStorage({
+const storage = multer.diskStorage( {
   destination: (req, file, cb) => cb(null, uploadFolder),
   filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`)
 });
@@ -138,7 +137,7 @@ router.get("/:documentId", isAuthenticated, getDocumentById);
  */
 router.post("/extract-text", isAuthenticated, extractText);
 
-router.post("/archive-temp", archiveTempDocument);
+router.post("/archive-temp", isAuthenticated, archiveTempDocument);
 
 module.exports = router;
 
