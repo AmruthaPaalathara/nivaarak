@@ -12,9 +12,12 @@ const StatusApplicationsTable = () => {
 
     const fetchDataByStatus = async (status) => {
         try {
-            const res = await API.get(`/admin-dashboard/status-applications?status=${status}`);
+            const token = localStorage.getItem("accessToken");
+            const res = await API.get(`/admin-dashboard/status-applications?status=${status}`,
+                { headers: { Authorization: `Bearer ${token}` } });
             setApplications(res.data.applications);  // Store fetched applications
         } catch (err) {
+            console.error("🚨 Status fetch error:", err);
             setError('Failed to fetch data');
         } finally {
             setLoading(false);
@@ -22,8 +25,11 @@ const StatusApplicationsTable = () => {
     };
 
     useEffect(() => {
-        fetchDataByStatus(selectedStatus);  // Fetch data when the status changes
+        setCurrentPage(1);
+        fetchDataByStatus(selectedStatus);
     }, [selectedStatus]);
+
+
 
     const filteredApps =
         selectedStatus === 'All'
@@ -66,7 +72,8 @@ const StatusApplicationsTable = () => {
                         <tr>
                             <th>SL.NO</th>
                             <th>Applicant Name</th>
-                            <th>Document Type</th>
+
+                            <th>Document Type </th>
                             <th>Department</th>
                             <th>Submitted Date</th>
                             <th>Emergency Level</th>
@@ -78,8 +85,9 @@ const StatusApplicationsTable = () => {
                         {currentApps.map((app, index) => (
                             <tr key={app._id}>
                                 <td>{index + 1 + indexOfFirstApp}</td>
-                                <td>{app.userId?.username || "Unknown"}</td>
-                                <td>{app.documentType?.documentType || "Unknown"}</td>
+                                <td>{app.applicantName || 'Unknown'}</td>
+
+                                <td>{app.documentTypeName || app.documentType || 'Unknown'}</td>
                                 <td>{app.department || 'Unknown'}</td>
                                 <td>
                                     {app.createdAt
@@ -98,18 +106,25 @@ const StatusApplicationsTable = () => {
                         </tbody>
                     </Table>
 
-                    <Pagination className="justify-content-center">
-                        {[...Array(totalPages)].map((_, idx) => (
-                            <Pagination.Item
-                                key={idx + 1}
-                                active={idx + 1 === currentPage}
-                                onClick={() => handlePageChange(idx + 1)}
+
+                        {/* … your table markup … */}
+
+                        <div className="d-flex justify-content-between mt-3">
+                            <Button
+                                disabled={currentPage <= 1}
+                                onClick={() => setCurrentPage(p => p - 1)}
                             >
-                                {idx + 1}
-                            </Pagination.Item>
-                        ))}
-                    </Pagination>
-                </>
+                                ← Previous
+                            </Button>
+                            <span>Page {currentPage} of {totalPages || 1}</span>
+                            <Button
+                                disabled={currentPage >= totalPages}
+                                onClick={() => setCurrentPage(p => p + 1)}
+                            >
+                                Next →
+                            </Button>
+                        </div>
+                    </>
             )}
         </>
     );

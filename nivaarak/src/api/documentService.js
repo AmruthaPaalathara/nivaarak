@@ -1,70 +1,72 @@
+// src/api/documentService.js
 
 import axios from "axios";
 
-const fetchUserDocuments = async () => {
+// 1) Create a shared Axios instance that sends cookies
+const API = axios.create({
+    baseURL: process.env.REACT_APP_API_URL,
+    withCredentials: true,                // ← send HTTP-only cookies
+    headers: { "Content-Type": "application/json" }
+});
+
+/**
+ * Fetches this user’s document types.
+ * Automatically handles access-token expiry by calling /auth/refresh-token (cookie-based).
+ *
+ * @returns {Promise<{success: boolean, types: string[]}>}
+ */
+export async function fetchUserDocuments() {
+    const url = "/certificates/user-documents";
+
     try {
-        const token = localStorage.getItem("accessToken"); // or sessionStorage if required
-        if (!token) throw new Error("No authentication token found");
+        // 1a) Get current access token
+        const accessToken = localStorage.getItem("accessToken");
+        if (!accessToken) {
+            throw new Error("No access token, please log in.");
+        }
 
-        const url = `${process.env.REACT_APP_API_URL}/certificates/user-documents`;
-        console.log(" Request URL:", url);
-
-        const response = await axios.get(url, {
-            headers: {
-                Authorization: `Bearer ${token}`
-            }
+        // 1b) Attempt to fetch document types
+        const response = await API.get(url, {
+            headers: { Authorization: `Bearer ${accessToken}` }
         });
 
-        console.log("Fetched docs:", response.data);
-
-        // Return unique document types (in case duplicates exist)
         const types = [...new Set(response.data.documentTypes || [])];
         return { success: true, types };
 
     } catch (error) {
+        // 2) If we got a 401, try to refresh the token
         if (error.response?.status === 401) {
-            // Token expired or unauthorized, attempt to refresh
-            const refreshToken = document.cookie.split(';').find(cookie => cookie.trim().startsWith('refreshToken='));
+            console.warn("Access token expired; attempting refresh...");
 
-            if (refreshToken) {
-                try {
-                    // Send the refresh token to the backend to get a new access token
-                    const refreshResponse = await axios.post(`${process.env.REACT_APP_API_URL}/auth/refresh-token`, {}, {
-                        headers: {
-                            "Authorization": `Bearer ${refreshToken.split('=')[1]}`
-                        },
-                        withCredentials: true // Make sure to send cookies
-                    });
+            try {
+                // 2a) Hit your refresh endpoint; browser will send the refreshToken cookie
+                const refreshResp = await API.post("/auth/refresh-token");
+                const newAccess = refreshResp.data.accessToken;
+                localStorage.setItem("accessToken", newAccess);
 
-                    // Store the new access token
-                    const newAccessToken = refreshResponse.data.accessToken;
-                    localStorage.setItem("accessToken", newAccessToken);
+                // 2b) Retry original request with new token
+                const retry = await API.get(url, {
+                    headers: { Authorization: `Bearer ${newAccess}` }
+                });
+                const types = [...new Set(retry.data.documentTypes || [])];
+                return { success: true, types };
 
-                    // Retry the original request with the new token
-                    const retryResponse = await axios.get(url, {
-                        headers: {
-                            Authorization: `Bearer ${newAccessToken}`
-                        }
-                    });
-
-                    console.log("Fetched docs after token refresh:", retryResponse.data);
-
-                    const types = [...new Set(retryResponse.data.documentTypes || [])];
-                    return { success: true, types };
-
-                } catch (refreshError) {
-                    console.error("Token refresh failed:", refreshError.response?.data || refreshError.message);
-                    return { success: false, types: [] };
-                }
-            } else {
-                console.error("No refresh token found in cookies");
+            } catch (refreshError) {
+                console.error(
+                    "Token refresh failed:",
+                    refreshError.response?.data || refreshError.message
+                );
                 return { success: false, types: [] };
             }
-        } else {
-            console.error("Error fetching document types:", error.response?.data || error.message);
-            return { success: false, types: [] };
         }
-    }
-};
 
-export default fetchUserDocuments;
+        // 3) Any other error
+        console.error(
+            "Error fetching document types:",
+            error.response?.data || error.message
+        );
+        return { success: false, types: [] };
+    }
+}
+
+

@@ -6,7 +6,7 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import "../css/style.css";
 import axios from 'axios';
 import API from "../../src/utils/api";
-import fetchUserDocuments from "../api/documentService";
+import { fetchUserDocuments } from "../api/documentService";
 
 const ApplicationForm = () => {
   const navigate = useNavigate();
@@ -203,33 +203,6 @@ const ApplicationForm = () => {
           return;
         }
 
-        // Step 2: Generate PDF
-        const pdfGenerateResponse = await API.post("/pdf/generate-pdf", {
-          userId: userId,
-          documentType: formData.documentType,
-        }, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        console.log("Saved Generated PDF with userId:", userId, "and documentType:", formData.documentType.trim().toLowerCase());
-
-        console.log("PDF Generated:", pdfGenerateResponse.data);
-
-        // Step 3: Send Email
-        console.log("About to send email...");
-        const emailSendResponse = await API.post("/email/send-email", {
-          email: formData.email,
-          documentType: formData.documentType,
-          userId: userId,
-        });
-
-        if (emailSendResponse.data.success) {
-          console.log("Email sent:", emailSendResponse.data);
-        } else {
-          console.warn("Email sending failed:", emailSendResponse.data.message);
-          toast.warning("Application submitted, but email not sent.");
-        }
-
         // Step 4: Navigate to homepage
         console.log("Navigating to homepage...");
         setShowSuccessModal(true);
@@ -242,13 +215,26 @@ const ApplicationForm = () => {
         toast.error("Failed to submit the application.");
       }
 
-    } catch (error) {
-      console.error("Error during submit or PDF/Email:", error);
-      toast.error("An unexpected error occurred.");
-    } finally {
-      setIsSubmitting(false);
+    } catch (err) {
+    const resp = err.response;
+    // If the server returned a validation-errors array
+    if (resp?.status === 400 && Array.isArray(resp.data?.errors)) {
+      console.error("Validation errors:", resp.data.errors);
+      // Show each validation message in an alert
+      alert(resp.data.errors.map(e => e.msg).join("\n"));
+    } else {
+      // Fallback for other errors
+      console.error("Unexpected error during submit or PDF/Email:", {
+        status: resp?.status,
+        data:   resp?.data,
+        err
+      });
+      alert(`Server error (${resp?.status}): ${JSON.stringify(resp?.data)}`);
     }
-  };
+  }finally {
+    setIsSubmitting(false);
+  }
+};
 
   const handlePreview = () => {
     if (Object.keys(formData.files).length === documentRequirements [formData.documentType]?.length) {
@@ -308,7 +294,7 @@ const ApplicationForm = () => {
           "Factory Registration Certificate",
           "Boiler Registration Certificate",
           "Landless Certificate",
-          "PNew Water Connection"
+          "New Water Connection"
         ]);
       }
     };
@@ -413,13 +399,16 @@ const ApplicationForm = () => {
                                 })}
                             <Form.Group controlId="emergencyLevel" className="mt-3">
                               <Form.Label>Urgency Level</Form.Label>
-                              <Form.Select name="emergencyLevel" value={formData.emergencyLevel} onChange={handleChange} required>
+                              <Form.Select name="emergencyLevel" value={formData.emergencyLevel} onChange={handleChange}  isInvalid={!!errors.emergencyLevel} required>
                                 <option value="">Select urgency level</option>
                                 <option value="Critical"> Critical (Need immediately)</option>
                                 <option value="High"> High (Need within 1–2 days)</option>
                                 <option value="Medium"> Medium (This week)</option>
                                 <option value="Low"> Low (Not urgent)</option>
                               </Form.Select>
+                              <Form.Control.Feedback type="invalid">
+                                {errors.emergencyLevel}
+                              </Form.Control.Feedback>
                             </Form.Group>
                           </Col>
 

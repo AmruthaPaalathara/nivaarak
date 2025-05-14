@@ -44,7 +44,5 @@ router.get("/profile", authenticateJWT(), (req, res) => {
 router.put("/profile", authenticate, isUser, updateUserProfile);
 router.delete("/profile", authenticate, isUser, deleteUser);
 
-// routes/adminDashboardRoutes.js
-
 
 module.exports = router;

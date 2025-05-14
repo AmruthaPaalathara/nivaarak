@@ -43,22 +43,24 @@ const handleUploadSuccess = (data) => {
   const AppContent = () => {
     const {isAuthenticated} = useAuth();
 
+      console.log("User authenticated:", isAuthenticated);
+
     return (
         <>
             <Navbar/>
             <div className="main-content mt-5">
               <Suspense fallback={<div>Loading...</div>}>
                 <Routes>
-                  <Route path="/" element={<HomePage/>}/>
-                  <Route path="/registration" element={<Register/>}/>
-                  <Route path="/forgot-password" element={<ForgotPassword/>}/>
                     <Route path="/signin" element={<Signin />} />
+                    <Route path="/registration" element={<Register/>}/>
+                    <Route path="/forgot-password" element={<ForgotPassword/>}/>
+                    <Route path="/" element={<HomePage/>}/>
                   {/* other nav items */}
 
                   <Route path="/chat" element={isAuthenticated ? <ChatWithUpload onUploadSuccess={handleUploadSuccess} /> : <Navigate to="/signin" />} />
                     <Route path="/application" element={<ApplicationForm />} />
                     <Route path="/profile" element={<Profile />} />
-                    <Route path="*" element={<Navigate to="/"/>}/>
+
                 </Routes>
               </Suspense>
             </div>

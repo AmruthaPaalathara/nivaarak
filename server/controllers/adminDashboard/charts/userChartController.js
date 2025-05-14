@@ -1,52 +1,50 @@
+// server/controllers/adminDashboard/charts/userChartController.js
+
 const Certificate = require("../../../models/application/certificateApplicationSchema");
 
 exports.getUserApplicationStats = async (req, res) => {
     try {
         const userId = req.user.userId;
 
-        const aggregationResult = await Certificate.aggregate([
+        // 1) Total count per document type
+        const totalApplications = await Certificate.aggregate([
             { $match: { applicant: userId } },
-            {
-                $lookup: {
-                    from: "userdocuments",
-                    localField: "documentType",      // the string field in Certificate
-                    foreignField: "documentType",    // match it against this field in UserDocument
-                    as: "documentInfo"
-                }
-            },
-            { $unwind: {path: "$documentInfo",preserveNullAndEmptyArrays: true } }, //  Extract documentType name
-            {
-                $group: {
-                    _id: { $ifNull: ["$documentInfo.documentType", "Unknown"] },  // Use name field instead of ID
+            { $group: {
+                    _id: "$documentType",
                     count: { $sum: 1 }
-                }
-            },
-            { $sort: { "_id.documentType": 1 } }
+                }},
+            { $project: { _id: 0, documentType: "$_id", count: 1 }},
+            { $sort: { documentType: 1 } }
         ]);
 
-        console.log("Aggregation result:", aggregationResult);
-
-        const totalApplicationsMap = new Map();
-        const statusBreakdown = [];
-
-        aggregationResult.forEach(({ _id, count }) => {
-            const docType = _id || "Unknown"; // ✅ Since `_id` is already the document type // ✅ Avoids defaulting to unknown
-            totalApplicationsMap.set(docType, (totalApplicationsMap.get(docType) || 0) + count);
-
-            statusBreakdown.push({
-                documentType: docType,
-                status: "Not Available",
-                count
-            });
-        });
-
-        const totalApplications = Array.from(totalApplicationsMap, ([docType, count]) => ({ documentType: docType, count }));
-
-        res.json({ success: true, totalApplications, statusBreakdown });
+        // 2) Breakdown by documentType AND status
+        const statusBreakdown = await Certificate.aggregate([
+            { $match: { applicant: userId } },
+            { $group: {
+                    _id: { documentType: "$documentType", status: "$status" },
+                    count: { $sum: 1 }
+                }},
+            { $project: {
+                    _id: 0,
+                    documentType: "$_id.documentType",
+                    status:       "$_id.status",
+                    count:        1
+                }},
+            { $sort: { documentType: 1, status: 1 } }
+        ]);
 
         console.log("Drill-down API Response:", { totalApplications, statusBreakdown });
+
+        return res.json({
+            success: true,
+            totalApplications,
+            statusBreakdown
+        });
     } catch (error) {
         console.error("Error fetching application stats:", error);
-        res.status(500).json({ success: false, message: "Failed to fetch application stats" });
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch application stats"
+        });
     }
 };

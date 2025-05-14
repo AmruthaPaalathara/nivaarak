@@ -1,16 +1,31 @@
+// server/utils/ocrFallbackExtractor.js
 const { exec } = require("child_process");
-const path = require("path");
+const path     = require("path");
 
+/**
+ * Runs a Python-based fallback OCR extraction on a PDF file.
+ * Uses 'py -3' on Windows or 'python3' on Unix-like systems.
+ *
+ * @param {string} pdfPath - Absolute path to the PDF file.
+ * @returns {Promise<{status: string, text: string}>}
+ */
 const extractTextWithOCR = (pdfPath) => {
     return new Promise((resolve, reject) => {
-        const PYTHON_CMD = process.platform === "win32" ? "python" : "python3";
-        const scriptPath = path.resolve(__dirname, "../../extracting/process_pdf.py");
+        const isWin       = process.platform === "win32";
+        const PYTHON_CMD  = isWin ? "py"       : "python3";
+        const PYTHON_FLAG = isWin ? "-3"       : null;
 
-        const command = `${PYTHON_CMD} "${scriptPath}" "${pdfPath}"`;
+        // Resolve the Python script path
+        const scriptPath = path.resolve(__dirname, "../../Applicationextracting/process_pdf.py");
 
-        console.log("🔁 Running fallback OCR extraction:", command);
+        // Build command arguments
+        const args = [];
+        if (PYTHON_FLAG) args.push(PYTHON_FLAG);
+        args.push(scriptPath, pdfPath);
+        const cmdline = args.map(a => `"${a}"`).join(" ");
 
-        exec(command, (error, stdout, stderr) => {
+        console.log("🔁 Running fallback OCR extraction:", PYTHON_CMD, cmdline);
+        exec(`${PYTHON_CMD} ${cmdline}`, (error, stdout, stderr) => {
             if (error) {
                 console.error("❌ OCR extraction failed:", stderr || error.message);
                 return reject(new Error(stderr || "OCR extraction failed"));

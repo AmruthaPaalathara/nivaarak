@@ -89,6 +89,7 @@ function RegisterForm() {
 
   // Submit form
   const handleSubmit = async (event) => {
+    console.log("🔥 handleSubmit fired!", formData);
     event.preventDefault();
     setApiError("");
 
@@ -106,7 +107,7 @@ function RegisterForm() {
       );
 
       if (response.data.success) {
-        navigate("/sign");  // Redirect to sign-in page after successful registration
+        navigate("/signin");  // Redirect to sign-in page after successful registration
       } else {
         setApiError(response.data.message || "Something went wrong.");
       }
@@ -125,6 +126,10 @@ function RegisterForm() {
     "Strong",
     "Very Strong",
   ];
+
+  useEffect(() => {
+    console.log("Register component mounted");
+  }, []);
 
   return (
     <Container className="register-container">

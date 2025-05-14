@@ -2,65 +2,54 @@
 const Certificate = require("../../models/application/certificateApplicationSchema");
 const extractText = require("../../middleware/extraction/extractUploadedText");
 const path = require("path");
-const DepartmentMapping  = require("../../models/application/DepartmentMapping");
+const DepartmentMapping = require('../../models/application/departmentMapping');
 const { User } = require("../../models/authentication/userSchema")
 const UserDocument = require("../../models/application/userDocumentSchema");
-// Admin: Fetch All Applications
-exports.getAllApplicationsForAdmin = async (req, res) => {
-    try {
-        const page         = parseInt(req.query.page)  || 1;
-        const limit        = parseInt(req.query.limit) || 20;
-        const statusFilter = req.query.status; // e.g. ?status=Pending
-        const skip         = (page - 1) * limit;
-        const query        = statusFilter ? { status: statusFilter } : {};
 
-        // 1) Build & execute your query with applicant populated
-        let applications = await Certificate.find(query)
+// Admin: Fetch All Applications
+
+exports.getAllAdminApplications = async (req, res) => {
+    try {
+        // 1) Fetch raw applications + populate only the applicant (User) by userId
+        let applications = await Certificate.find()
             .populate({
-                path:      "applicant",
-                model:     "User",
-                select:    "username",
-                match:     { userId: { $exists: true } },
+                path: "applicant",
+                model: "User",
+                select: "username",
+                match: { userId: { $exists: true } },
                 foreignField: "userId"
             })
             .sort({ emergencyLevel: 1, requiredBy: 1, createdAt: -1 })
-            .skip(skip)
-            .limit(limit)
             .lean();
 
-        // 2) Attach human-readable documentType
-        const types   = [...new Set(applications.map(a => a.documentType))];
-        const userDocs= await UserDocument.find({ documentType: { $in: types } })
+        if (!applications.length) {
+            return res.status(404).json({ message: "No applications found." });
+        }
+
+        // 2) Build a lookup map from your UserDocument collection by the string field
+        const types = [...new Set(applications.map(app => app.documentType))];
+        const docs  = await UserDocument.find({
+            documentType: { $in: types }
+        })
             .select("documentType")
             .lean();
-        const docMap  = userDocs.reduce((m, d) => {
-            m[d.documentType] = d.documentType;
+
+        const docMap = docs.reduce((m, d) => {
+            m[d.documentType] = d.documentType;  // key and value both the human‐readable name
             return m;
         }, {});
 
-        // 3) Attach department from your mapping collection
-        const mappings    = await DepartmentMapping.find().lean();
-        const departmentMap = mappings.reduce((m, d) => {
-            m[d.documentType] = d.department;
-            return m;
-        }, {});
+        // 3) Attach `documentTypeName` to each app
         applications = applications.map(app => ({
             ...app,
-            documentTypeName: docMap[app.documentType] || "Unknown",
-            department: departmentMap[app.documentType] || "Unknown"
+            documentTypeName: docMap[app.documentType] || app.documentType || "Unknown"
         }));
 
-        const total = await Certificate.countDocuments(query);
-        res.status(200).json({
-            success: true,
-            totalApplications: total,
-            currentPage: page,
-            totalPages: Math.ceil(total / limit),
-            data: applications
-        });
+        return res.status(200).json({ success: true, applications });
+
     } catch (error) {
-        console.error("❌ Admin fetching applications failed:", error);
-        res.status(500).json({ success: false, message: error.message });
+        console.error("Error fetching all admin applications:", error);
+        return res.status(500).json({ success: false, message: "Failed to fetch data" });
     }
 };
 
@@ -160,89 +149,143 @@ exports.getAllAdminApplications = async (req, res) => {
     }
 };
 
-// Fetch department-specific applications
+// ─── A) List of Departments ────────────────────────────────────────────────────
+exports.getAllDepartments = async (req, res) => {
+    try {
+        const depts = await DepartmentMapping
+            .find({}, 'department')
+            .sort('department')
+            .lean();
+        const unique = [...new Set(depts.map(d => d.department))];
+        res.json({ success: true, departments: unique });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Could not load departments' });
+    }
+};
+
+
+// ─── B) Fetch applications (with applicantName & department) ────────────────────
 exports.getDepartmentApplications = async (req, res) => {
     try {
         const { department } = req.query;
-        const query = (department && department !== "All")
-            ? { department }
+        console.log("→ Requested department filter:", department);
+
+        // 1️⃣ get all mappings for that department (or all if “All”)
+        const mappingFilter = (department && department !== "All")
+            ? { department: { $regex: `^${department.trim()}$`, $options: "i" } }
             : {};
 
-        // 1) Fetch & populate applicant
-        let applications = await Certificate.find(query)
-            .populate({
-                path:      "applicant",
-                model:     "User",
-                select:    "username",
-                match:     { userId: { $exists: true } },
-                foreignField: "userId"
-            })
-            .sort({ emergencyLevel: 1, requiredBy: 1, createdAt: -1 })
+        const dmDocs = await DepartmentMapping
+            .find(mappingFilter)
+            .select("documentType department")
             .lean();
+        console.log("→ DepartmentMapping results:", dmDocs);
 
-        // 2) Replace documentType string with itself (just ensure it exists)
-        const types = [...new Set(applications.map(a => a.documentType))];
-        const docs  = await UserDocument.find({ documentType: { $in: types } })
-            .select("documentType")
+        // If user chose a real department but no mapping found, return empty immediately
+        if (department && department !== "All" && dmDocs.length === 0) {
+            return res.json({ success: true, applications: [] });
+        }
+
+        const validTypes = dmDocs.map(d => d.documentType);
+        console.log("→ documentTypes in department:", validTypes);
+
+        // 2️⃣ fetch certificates whose documentType is in that list (or all if “All”)
+        const certFilter = (department && department !== "All")
+            ? { documentType: { $in: validTypes } }
+            : {};
+
+        // 1) load certificates
+        let apps = await Certificate.find(certFilter).lean();
+        console.log(`→ Found ${apps.length} matching certificates`);
+
+        // 2) fetch all users whose userId appears
+        const userIds = [...new Set(apps.map(a => a.applicant))];
+        const users = await User.find({ userId: { $in: userIds } })
+            .select("userId first_name last_name")
             .lean();
-        const map   = docs.reduce((m, d) => {
-            m[d.documentType] = d.documentType;
+        const userMap = users.reduce((m,u) => {
+            m[u.userId] = `${u.first_name} ${u.last_name}`;
             return m;
         }, {});
-        applications = applications.map(app => ({
-            ...app,
-            documentTypeName: map[app.documentType] || "Unknown"
+
+        const deptMap   = dmDocs.reduce((m,d) => {
+            m[d.documentType] = d.department;
+            return m;
+        }, {});
+
+        // 4) attach applicantName & department to each record
+        apps = apps.map(a => ({
+            ...a,
+            applicantName: userMap[a.applicant] || "Unknown",
+
+            department:    deptMap[a.documentType] || 'Unknown'
         }));
 
-        if (!applications.length) {
-            return res.status(404).json({ message: "No applications found." });
-        }
-        res.status(200).json({ success: true, applications });
+        // 5) now do the filter in JS
+        const filtered = (!department || department === "All")
+            ? apps
+            : apps.filter(a => a.department === department);
+
+        return res.json({ success: true, applications: filtered });
+
     } catch (err) {
         console.error("❌ Error fetching department applications:", err);
-        res.status(500).json({ success: false, error: "Failed to fetch data" });
+        return res.status(500).json({ success: false, message: 'Failed to fetch applications' });
     }
 };
 
 exports.getStatusApplications = async (req, res) => {
     try {
-        const { status } = req.query;  // Get status filter from query params
-        let query = {};
-        if (status && status !== 'All') {
-            query.status = status;  // Filter by status if selected
+        const { status } = req.query;
+        const query = (status && status !== "All") ? { status } : {};
+
+        // 1️⃣ Fetch raw apps
+        let applications = await Certificate.find(query).lean();
+
+        // if no apps, bail early
+        if (!applications.length) {
+            return res.status(404).json({ message: "No applications found for the selected status." });
         }
 
-        const applications = await Certificate.find(query).lean(); // Using lean() for faster, non-Mongoose documents
-
-        const types = [...new Set(applications.map(a => a.documentType))];
-
-// 3. Lookup userDocs by string field
-        const userDocs = await UserDocument.find({
-            userId: { $exists:true },      // or your filter
-            documentType: { $in: types }
-        })
-            .select("documentType")
+        // 2️⃣ Lookup users to build applicantName
+        const userIds = [...new Set(applications.map(a => a.applicant))];
+        const users = await User.find({ userId: { $in: userIds } })
+            .select("userId first_name last_name")
             .lean();
 
-// 4. Build map
-        const docMap = userDocs.reduce((m, d) => {
-            m[d.documentType] = d.documentType;
+        const userMap = users.reduce((m, u) => {
+            m[u.userId] = `${u.first_name} ${u.last_name}`.trim();
             return m;
         }, {});
 
-// 5. Attach human‐readable docType into each record
-        applications.forEach(app => {
-            app.documentTypeName = docMap[app.documentType] || "Unknown";
-        });
+        applications = applications.map(app => ({
+            ...app,
+            applicantName: userMap[app.applicant] || "Unknown"
+        }));
 
-        if (!applications.length) {
-            return res.status(404).json({ message: 'No applications found for the selected status.' });
-        }
+        // 3️⃣ Attach human-readable documentTypeName
+        const types = [...new Set(applications.map(a => a.documentType))];
+        const dmDocs = await DepartmentMapping.find({ documentType: { $in: types } })
+            .select("documentType department")
+            .lean();
 
-        res.status(200).json({ applications });  // Send applications data as response
+        const deptMap = dmDocs.reduce((m, d) => {
+            m[d.documentType] = d.department;
+            return m;
+        }, {});
+
+        applications = applications.map(app => ({
+            ...app,
+
+            department: deptMap[app.documentType] || "Unknown"
+        }));
+
+        // 4️⃣ Finally return
+        return res.status(200).json({ applications });
+
     } catch (err) {
-        console.error('Error fetching status applications:', err);
-        res.status(500).json({ error: 'Failed to fetch data' });
+        console.error("Error fetching status applications:", err);
+        return res.status(500).json({ error: "Failed to fetch data" });
     }
 };
-

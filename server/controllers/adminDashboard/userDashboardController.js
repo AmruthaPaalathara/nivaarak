@@ -4,6 +4,7 @@ const { User } = require("../../models/authentication/userSchema"); // Ensure th
 const Certificate = require("../../models/application/certificateApplicationSchema");
 const UserDocument = require("../../models/application/userDocumentSchema");
 const Eligibility = require("../../models/eligibility/eligibilitySchema");
+const DepartmentMapping = require("../../models/application/DepartmentMapping");
 
 //  GET User Profile
 exports.getUserProfile = async (req, res) => {
@@ -80,41 +81,51 @@ exports.getUserApplicationTableData = async (req, res) => {
     const userId = req.user.userId;
     console.log("Fetching user applications for:", userId);
 
-    // Fetch certificate applications
-    let certificateApplications = await Certificate.find({ applicant: userId }).lean();
-    let eligibilityApplications = await Eligibility.find({ applicant: userId }).lean();
+    // 1) Load user’s applications
+    const certificateApplications = await Certificate.find({ applicant: userId }).lean();
+    const eligibilityApplications = await Eligibility.find({ applicant: userId }).lean();
 
-    // Fetch all referenced documentType IDs
-    const docTypes = [...new Set(certificateApplications.map(app => app.documentType))];
-    const documentTypeMap = await UserDocument.find({
-      userId,
-      documentType: { $in: docTypes }
+    // 2) Gather all documentTypes to lookup departments
+    const allDocTypes = [
+      ...new Set(
+          certificateApplications
+              .concat(eligibilityApplications)
+              .map(app => app.documentType)
+      )
+    ];
+
+    // 3) Fetch department mappings in one go
+    const mappings = await DepartmentMapping.find({
+      documentType: { $in: allDocTypes }
     })
-        .lean()
-        .then(docs => {
-          const map = {};
-          docs.forEach(d => { map[d.documentType] = d.documentType; });
-          return map;
-        });
+        .lean();
 
-// Then when you rewrite each application:
+    // 4) Build a lookup: { "Solvency Certificate": "Labour Department", … }
+    const deptMap = mappings.reduce((map, m) => {
+      map[m.documentType] = m.department;
+      return map;
+    }, {});
+
+    console.log("Built department map:", deptMap);
+
+    // 5) Annotate each application with its department (or "N/A")
     certificateApplications.forEach(app => {
-      app.documentType = documentTypeMap[app.documentType] || "Unknown";
+      app.department = deptMap[app.documentType] || "N/A";
+    });
+    eligibilityApplications.forEach(app => {
+      app.department = deptMap[app.documentType] || "N/A";
     });
 
-    console.log("Document type in getUserApplicationTableData function in userDashboardController file is: ", documentTypeMap)
-    // Replace ObjectId in certificateApplications with actual document type name
-    certificateApplications.forEach(app => {
-      app.documentType = documentTypeMap[app.documentType.toString()] || "Unknown";  //  Ensure correct lookup
-    });
-
-    let allApplications = [...certificateApplications, ...eligibilityApplications];
-
+    // 6) Combine lists and return
+    const allApplications = [...certificateApplications, ...eligibilityApplications];
     console.log("Final Table API Response:", allApplications);
 
-    res.json({ success: true, applications: allApplications });
+    return res.json({ success: true, applications: allApplications });
   } catch (error) {
     console.error("Error fetching table data:", error);
-    res.status(500).json({ success: false, message: "Failed to fetch application table data" });
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch application table data"
+    });
   }
 };

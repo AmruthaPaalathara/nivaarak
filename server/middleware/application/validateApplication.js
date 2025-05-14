@@ -67,7 +67,7 @@ const validateApplicationForm = [
 
     body("emergencyLevel")
         .optional()
-        .isIn(["Low", "Medium", "High"])
+        .isIn(["Critical", "High", "Medium", "Low"])
         .withMessage("Invalid emergency level"),
 
     body("requiredBy")

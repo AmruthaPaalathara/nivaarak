@@ -21,23 +21,7 @@ const Dashboard = () => {
   const [showDrilldown, setShowDrilldown] = useState(false);
   const [activeTab, setActiveTab] = useState("userDashboard");
   const navigate = useNavigate();
-
-  const getUserRoleFromToken = () => {
-    const token = localStorage.getItem("accessToken");
-    if (!token) {
-      navigate("/login");
-      return null;
-    }
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      return payload?.role || null;
-    } catch (error) {
-      console.error("Invalid token format:", error);
-      localStorage.removeItem("accessToken");
-      navigate("/login");
-      return null;
-    }
-  };
+  const [role, setRole]           = useState(null);
 
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
@@ -45,51 +29,80 @@ const Dashboard = () => {
       navigate("/login");
       return;
     }
+    let payload;
+    try {
+      payload = JSON.parse(atob(token.split(".")[1]));
+    } catch {
+      localStorage.removeItem("accessToken");
+      navigate("/login");
+      return;
+    }
+    setRole(payload.role);                              // store it in state
+    setActiveTab(payload.role === "admin"
+        ? "dashboardOverview"
+        : "userTable"
+    );
+  }, [navigate]);
 
-    const role = getUserRoleFromToken();
-    setActiveTab(role === "admin" ? "adminTable" : "userTable");
+  // 2️⃣  Now fetch data once we know the role:
+  useEffect(() => {
+    if (!role) return;  // wait until role is decoded
 
-    const fetchData = async () => {
+    const token = localStorage.getItem("accessToken");
+    setLoading(true);
+
+    (async () => {
       try {
-        setLoading(true);
-        const [profileRes, chartRes] = await Promise.all([
-          role === "admin"
-              ? API.get("/admin-dashboard", { headers: { Authorization: `Bearer ${token}` } })
-              : API.get("/users/profile", { headers: { Authorization: `Bearer ${token}` } }),
-          API.get(role === "admin" ? "/admin-dashboard/admin-applications" : "/userCharts/user-applications", {
-            headers: { Authorization: `Bearer ${token}` }
-          })
-        ]);
-
         if (role === "admin") {
-          setUserData({ username: "admin", email: "admin@nivaarak.com", role: "admin", phone: "N/A" });
-          setApplications(profileRes.data.data);
+          // — Admin: only hit the admin endpoints
+          // (this one is unprotected so no 403)
+          await API.get("/admin-dashboard", {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const chartRes = await API.get("/admin-dashboard/admin-applications", {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          setUserData({   // immediately set admin info
+            username: "admin",
+            email:    "admin@nivaarak.com",
+            phone:    "N/A",
+            role:     "admin"
+          });
+          setApplications(chartRes.data.data);
+
         } else {
+          // — User: only hit the user endpoints
+          const [profileRes, chartRes] = await Promise.all([
+            API.get("/users/profile", {
+              headers: { Authorization: `Bearer ${token}` }
+            }),
+            API.get("/userCharts/user-applications", {
+              headers: { Authorization: `Bearer ${token}` }
+            })
+          ]);
           const user = profileRes.data.data.user;
           setUserData(user);
           setStats({
-            totalSubmitted: profileRes.data.data.stats?.totalSubmitted || 0,
-            emergencyCount: profileRes.data.data.stats?.emergencyCount || 0
+            totalSubmitted: profileRes.data.data.stats.totalSubmitted,
+            emergencyCount: profileRes.data.data.stats.emergencyCount
           });
-          setDocumentStats(chartRes.data.totalApplications || []);
+          setDocumentStats(chartRes.data.totalApplications);
         }
       } catch (err) {
         console.error("API Fetch Error:", err);
-        setError(err.message || "Failed to load dashboard data");
+        setError(err.response?.data?.message || err.message);
       } finally {
         setLoading(false);
       }
-    };
-
-    fetchData();
-  }, [navigate]);
+    })();
+  }, [role]);
 
   return (
       <Container fluid className="mt-4">
         <Row>
           {/* Sidebar */}
           <Col md={3}>
-            <Accordion defaultActiveKey="info">
+            <Accordion defaultActiveKey="info" className="mb-3">
               <Accordion.Item eventKey="info">
                 <Accordion.Header>👤 Personal Info</Accordion.Header>
                 <Accordion.Body>
@@ -107,12 +120,14 @@ const Dashboard = () => {
               </Accordion.Item>
             </Accordion>
 
-            <Accordion defaultActiveKey="nav">
+            <Accordion defaultActiveKey="nav" className="mb-3">
               <Accordion.Item eventKey="nav">
-                <Accordion.Header>{userData?.role === "admin" ? "Filter Options" : "Submitted Documents"}</Accordion.Header>
+                <Accordion.Header>
+                  {role === "admin" ? "Filter Options" : "Submitted Documents"}
+                </Accordion.Header>
                 <Accordion.Body>
                   <ul style={{ listStyleType: "none", padding: 0 }}>
-                    {userData?.role === "admin" ? (
+                    {role === "admin" ? (
                         <>
                           <li style={{ cursor: "pointer", padding: "5px" }} onClick={() => setActiveTab("department")}>
                             Filter by Department
@@ -128,20 +143,38 @@ const Dashboard = () => {
                           </li>
                         </>
                     ) : (
-                        <li style={{ cursor: "pointer", padding: "5px" }} onClick={() => setActiveTab("userTable")}>
-                          View Submitted Documents
-                        </li>
+                        <>
+                          <li
+                              style={{ cursor: "pointer", padding: "5px" }}
+                              onClick={() => setActiveTab("userTable")}
+                          >
+                            View Submitted Documents
+                          </li>
+                          <li
+                              style={{ cursor: "pointer", padding: "5px" }}
+                              onClick={() => setActiveTab("userDashboard")}
+                          >
+                            View My Stats
+                          </li>
+                          <li
+                              style={{ cursor: "pointer", padding: "5px" }}
+                              onClick={() => setActiveTab("typeChart")}
+                          >
+                            View Applications by Type
+                          </li>
+                        </>
                     )}
                   </ul>
                 </Accordion.Body>
               </Accordion.Item>
             </Accordion>
+
           </Col>
 
           {/* Main Content */}
           <Col md={9}>
             <Card className="shadow-sm p-4">
-              <Card.Title>{userData?.role === "admin" ? "Admin Dashboard" : "User Dashboard"}</Card.Title>
+              <Card.Title>{role === "admin" ? "Admin Dashboard" : "User Dashboard"}</Card.Title>
               <Card.Body>
                 {loading && <Spinner animation="border" />}
                 {error && <Alert variant="danger">{error}</Alert>}
@@ -149,15 +182,21 @@ const Dashboard = () => {
                 {/* USER VIEW */}
                 {userData?.role === "user" && (
                     <>
-                      {activeTab !== "userTable" ? (
+                      {/* Submitted Documents Table */}
+                      {activeTab === "userTable" && (
+                          <UserApplicationsTable />
+                      )}
+
+                      {/* Summary + Drilldown Chart */}
+                      {activeTab === "userDashboard" && (
                           <>
                             <ApplicationSummaryChart
                                 total={stats.totalSubmitted}
                                 emergency={stats.emergencyCount}
                                 documentStats={documentStats}
-                                role="user"
                                 chartTitle="Your Application Stats"
                             />
+
                             <Button
                                 variant="secondary"
                                 onClick={() => setShowDrilldown(prev => !prev)}
@@ -165,6 +204,7 @@ const Dashboard = () => {
                             >
                               {showDrilldown ? "Hide Document Drilldown" : "Show Document Drilldown"}
                             </Button>
+
                             {showDrilldown && (
                                 <DocumentTypeChart
                                     documentStats={documentStats}
@@ -174,11 +214,18 @@ const Dashboard = () => {
                                 />
                             )}
                           </>
-                      ) : (
-                          <UserApplicationsTable />
+                      )}
+
+                      {/* Applications by Type Chart */}
+                      {activeTab === "typeChart" && (
+                          <ApplicationByTypeChart
+                              title="Applications by Certificate Type"
+                              apiEndpoint="/userCharts/user-applications"
+                          />
                       )}
                     </>
                 )}
+
 
                 {/* ADMIN VIEW */}
                 {userData?.role === "admin" && (
