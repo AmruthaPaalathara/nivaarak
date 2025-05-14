@@ -1,23 +1,36 @@
-// server/extracting/process_uploaded_docs.js
-const { exec } = require("child_process");
+const { spawn } = require("child_process");
 const path      = require("path");
 
-module.exports.extractTextFromPdf = (pdfPath) => {
+/**
+ * Run your Python helper in "upload" mode.
+ * @param {string} pdfPath - absolute path to the PDF
+ * @returns {Promise<{status:string,text:string,metadata?:object}>}
+ */
+function extractTextFromPdf(pdfPath) {
     return new Promise((resolve, reject) => {
-        const script = path.join(__dirname, "process_uploaded_docs.py");
-        // Use python3 if that’s your interpreter
-        const cmd    = `python3 "${script}" "${pdfPath}"`;
+        // pick a Python command that actually exists on the system
+        const python = process.platform === "win32" ? "py" : "python3";
+        const script = path.resolve(__dirname, "process_uploaded_docs.py");
 
-        exec(cmd, { maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
-            if (err) {
-                return reject(new Error(stderr || err.message));
+        // spawn avoids shell‐escaping headaches
+        const py = spawn(python, [script, pdfPath], { stdio: ["ignore","pipe","pipe"] });
+        let out = "", err = "";
+
+        py.stdout.on("data", d => out += d);
+        py.stderr.on("data", d => err += d);
+
+        py.on("close", code => {
+            if (code !== 0) {
+                return reject(new Error(`OCR script failed (code ${code}):\n${err}`));
             }
             try {
-                const result = JSON.parse(stdout);
+                const result = JSON.parse(out);
                 resolve(result);
-            } catch (parseErr) {
-                reject(new Error("Failed to parse OCR output: " + parseErr.message));
+            } catch (e) {
+                reject(new Error(`Invalid JSON from OCR script:\n${out}`));
             }
         });
     });
-};
+}
+
+module.exports = { extractTextFromPdf };

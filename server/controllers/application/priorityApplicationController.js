@@ -1,5 +1,6 @@
 const Priority = require('../../models/application/prioritySchema');
 const { getApplicationPriority } = require('../../utils/prioritiseApplication');
+const Certificate = require("../../models/application/certificateApplicationSchema");
 
 const submitPriorityApplication = async (req, res) => {
   try {
@@ -50,20 +51,43 @@ const getAllPriorityApplications = async (req, res) => {
 
 const updatePriorityStatus = async (req, res) => {
   try {
-    const id = req.params.id;
+    const { id } = req.params;
     const { status } = req.body;
+
+    console.log("⏩ updatePriorityStatus:", { id: req.params.id, status: req.body.status });
+
+    // 1. Validate incoming status
     if (!['Approved', 'Rejected', 'Pending'].includes(status)) {
-      return res.status(400).json({ success: false, message: 'Invalid status' });
+      return res
+          .status(400)
+          .json({ success: false, message: 'Invalid status' });
     }
 
-    const updated = await Priority.findByIdAndUpdate(id, { status }, { new: true });
-    if (!updated) {
-      return res.status(404).json({ success: false, message: 'Application not found' });
+    console.log("Updating application", id, "to status", status);
+
+    // 2. Update in MongoDB
+    const app = await Certificate.findByIdAndUpdate(
+        id,
+        { status },
+        { new: true }
+    );
+
+    if (!app) {
+      return res
+          .status(404)
+          .json({ success: false, message: 'Application not found' });
     }
 
-    res.status(200).json({ success: true, message: 'Status updated', data: updated });
+    // 3. Return the new status so the client sees 200 OK
+    return res.json({
+      success: true,
+      applicationId: id,
+      newStatus: status
+    });
+
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error("updatePriorityStatus error:", err);
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 

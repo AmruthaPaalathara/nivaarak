@@ -3,7 +3,7 @@ const path = require("path");
 
 const extractText = (filePath) => {
     return new Promise((resolve, reject) => {
-        const script = path.join(__dirname, "../../extracting/process_uploaded_docs.py");
+        const script = path.join(__dirname, "../../Applicationextracting/process_uploaded_docs.py");
         const command = `python "${script}" "${filePath}"`;
 
         exec(command, (err, stdout, stderr) => {

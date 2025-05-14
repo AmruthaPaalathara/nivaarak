@@ -10,7 +10,7 @@ const { authenticateJWT } = require("../../middleware/authenticationMiddleware/a
 const { loginLimiter, authLimiter, refreshLimiter } = require("../../middleware/rateLimiting.js");
 
 // User Registration
-router.post("/register", authLimiter,validateRegistration, authController.registerUser);
+router.post("/register",validateRegistration, authController.registerUser);
 
 // User Login
 router.post("/login", validateLogin, authController.loginUser);
@@ -22,10 +22,10 @@ router.post("/refresh-token", authController.refreshToken);
 router.post("/verify-username", authLimiter, authController.verifyUsername);
 
 // Forgot Password: Accepts { email, newPassword }
-router.post("/forgot-password", authLimiter, validateForgotPassword, authController.forgotPassword);
+router.post("/forgot-password", validateForgotPassword, authController.forgotPassword);
 
 // Reset Password: Accepts { username, newPassword }
-router.post("/reset-password", authLimiter, validateForgotPassword, authController.resetPassword);
+router.post("/reset-password", validateForgotPassword, authController.resetPassword);
 
 // Get User Profile (Protected Route)
 router.get("/profile", authenticateJWT(), authController.getUserProfile);

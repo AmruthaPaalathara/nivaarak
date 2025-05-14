@@ -1,7 +1,7 @@
 const axios = require("axios");
 
 const fetchLlamaData = async (req, res, next) => {
-    console.log("🛠 LLaMA middleware is running with documentType:", req.body.documentType);
+    console.log(" LLaMA middleware is running with documentType:", req.body.documentType);
     try {
         console.log("Fetching LLaMA Data...");
         console.log("Received request body:", req.body);
@@ -11,7 +11,7 @@ const fetchLlamaData = async (req, res, next) => {
         console.log("Document type:", documentType);
         if (!documentType) {
             console.error("Error: Missing 'documentType' in request.");
-            return res.status(400).json({ error: "Document type is required." });
+            return res.status(400).json({error: "Document type is required."});
         }
 
         const prompt = `
@@ -54,7 +54,7 @@ Do **not** add extra text, commentary, or explanations outside the JSON format.
 
         console.log(" Sending Request to LLaMA3 API:", {
             model: "llama3-8b-8192",
-            messages: [{ role: "user", content: prompt }],
+            messages: [{role: "user", content: prompt}],
             response_format: "json_object",
             temperature: 0
         });
@@ -63,8 +63,8 @@ Do **not** add extra text, commentary, or explanations outside the JSON format.
             "https://api.groq.com/openai/v1/chat/completions",
             {
                 model: "llama3-8b-8192",
-                messages: [{ role: "user", content: prompt }],
-                response_format: { type: "json_object" },
+                messages: [{role: "user", content: prompt}],
+                response_format: {type: "json_object"},
                 temperature: 0
             },
             {
@@ -82,7 +82,7 @@ Do **not** add extra text, commentary, or explanations outside the JSON format.
         const aiResponse = response?.data?.choices?.[0]?.message?.content;
         if (!aiResponse) {
             console.error(" AI response is missing or malformed.");
-            return res.status(500).json({ error: "Invalid AI response format." });
+            return res.status(500).json({error: "Invalid AI response format."});
         }
 
         try {
@@ -93,15 +93,43 @@ Do **not** add extra text, commentary, or explanations outside the JSON format.
             req.llamaData = {}; // Default empty object to prevent system failure
         }
         console.log("Extracted Content:", req.llamaData);
-        if (Object.keys(req.llamaData).length > 0) {
-            next();
-        } else {
-            return res.status(500).json({ error: "Failed to process AI-generated content." });
+        if (!Object.keys(req.llamaData).length) {
+            console.warn("Failed to process AI-generated content; falling back to empty shape.");
+            req.llamaData = {
+                introduction: "",
+                benefits: "",
+                eligibility: "",
+                rejectionReasons: "",
+                resubmissionInformation: {},
+                officialDocs: []
+            };
         }
-    } catch (error) {
-        console.error("LLaMA3 API Error:", error?.response?.data || error.message);
-        return res.status(500).json({ error: "Failed to fetch AI-generated content" });
+    } catch (err) {
+        // Handle any unexpected errors or json_validate_failed
+        console.error("LLaMA3 middleware error:", err.response?.data || err.message);
+
+        // Try to rescue the 'failed_generation' blob if present
+        const apiErr = err.response?.data?.error;
+        if (apiErr?.code === "json_validate_failed" && apiErr.failed_generation) {
+            try {
+                req.llamaData = JSON.parse(apiErr.failed_generation);
+                console.warn("Using failed_generation payload for llamaData");
+            } catch {
+                req.llamaData = {};
+            }
+        } else {
+            req.llamaData = {
+                introduction: "",
+                benefits: "",
+                eligibility: "",
+                rejectionReasons: "",
+                resubmissionInformation: {},
+                officialDocs: []
+            };
+        }
+    } finally {
+        // Always proceed to next middleware/controller
+        next();
     }
 };
-
 module.exports = fetchLlamaData;

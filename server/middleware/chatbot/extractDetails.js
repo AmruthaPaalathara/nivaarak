@@ -1,201 +1,249 @@
-const fs = require("fs"); //file system module for reading,checking existence and deleting files
-const path = require("path"); //handles and transforms file paths
-const pdfParse = require("pdf-parse");
+// server/controllers/chatbot/documentController.js
+
+const mongoose = require("mongoose");
 const { exec } = require("child_process");
-const axios = require("axios"); // HTTP client for making API requests (used to call Groq API)
-require("dotenv").config();
-const { v4: uuidv4 } = require("uuid");
-const Document = require("../../models/chatbot/documentSchema.js");
+const path     = require("path");
+const fs       = require("fs");
+const crypto   = require("crypto");
+const { v4: uuidv4, validate: uuidValidate } = require("uuid");
+const redisClient = require("../../config/redisConfig");
+const Document    = require("../../models/chatbot/documentSchema");
+const { User }    = require("../../models/authentication/userSchema");
+const { extractTextWithOCR } = require("../../utils/ocrFallbackExtractor");
 
-const PYTHON_CMD = process.platform === "win32" ? "python" : "python3";
+// Enable debug logging for Mongoose
+mongoose.set("debug", true);
 
-// Log each step of the process
-const logStep = (step, message, level = "info") => {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] [${level.toUpperCase()}] [${step}] ${message}`);
-};
+// Configuration
+const UPLOAD_DIR           = path.join(__dirname, "../../uploads/chatbot/");
+const MAX_FILE_SIZE_BYTES  = parseInt(process.env.MAX_PDF_SIZE) || 10 * 1024 * 1024;
+const ALLOWED_MIME_TYPES   = ["application/pdf"];
 
-// Validate PDF file path
-const validatePdfPath = (pdfPath) => {
-  if (!fs.existsSync(pdfPath)) { //ensuring the file exists
-    throw new Error(`PDF file not found: ${pdfPath}`);
-  }
-  if (path.extname(pdfPath).toLowerCase() !== ".pdf") {  //using path.extname ensuring that the file is a .pdf file 
-    throw new Error(`Invalid file type: ${pdfPath}. Expected a PDF file.`);
-  }
-};
-
-// Execute Python script with timeout 10s
-const execWithoutTimeout = (command) => {
-  return new Promise((resolve, reject) => {
-    const processInstance = exec(command, (error, stdout, stderr) => { //runs the command using exec() function
-      if (error) {
-        reject({ status: "error", message: `Command failed: ${stderr || error.message}` });
-      } else if (stderr) {
-        reject({ status: "error", message: `Script error: ${stderr}` });
-      } else {
-        try {
-          const result = JSON.parse(stdout);
-          if (result.status === "success") {
-            resolve(result);
-          } else {
-            reject({ status: "error", message: `Script failed: ${result.message}` });
-          }
-        } catch (parseError) {
-          reject({ status: "error", message: `Failed to parse script output: ${stdout}` });
-        }
-      }
-    });
-  });
-};
-
-
-// Extract text from PDF using Python script
-const extractDetailsMiddleware  = async (pdfPath) => {
-  try {
-    validatePdfPath(pdfPath);
-    const scriptPath = path.join(__dirname, "../../extracting/process_pdf.py");
-    const command = `${PYTHON_CMD} ${scriptPath} "${pdfPath}"`;
-
-    logStep("Extract Text", `Running Python script: ${command}`);
-    const result = await execWithoutTimeout(command );
-
-    if (!result || !result.text) {
-        logStep("Extract Text", "No text extracted from the document.");
-        return ""; // Gracefully return empty string instead of throwing
-    }
-
-    logStep("Extract Text", "Text extraction successful");
-    return result.text;
-  } catch (error) {
-    logStep("Extract Text", `Error: ${error.message}`, "error");
-    throw new Error(`Text extraction failed: ${error.message}`);
-  }
-};
-
-const callGroqAPI = async (prompt) => {
-    try {
-
-      const response = await axios.post(
-        "https://api.groq.com/v1/chat/completions",
-        {
-          model: "llama3-8b-8192",
-          messages: [{ role: "user", content: prompt }],
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (!response.data.choices || !response.data.choices[0]?.message?.content) {
-        throw new Error("Invalid response format from Groq API");
-      }
-
-      return response.data.choices[0].message.content.trim();
-    } catch (error) {
-      logStep("Groq API", `API request failed: ${error.message}`, "error");
-      return "";
-
-    }
-  };
-
-const extractTextFromPDF = async (filePath) => {
-  try {
-    if (!fs.existsSync(filePath)) {
-      throw new Error(`File not found: ${filePath}`);
-    }
-
-    const dataBuffer = await fs.promises.readFile(filePath);
-    const data = await pdfParse(dataBuffer);
-
-    return data.text ? data.text.trim() : "No text found in PDF.";
-  } catch (error) {
-    console.error(`Failed to extract text from PDF: ${error.message}`);
-    return ""; // Return an empty string instead of null
-  }
-};
-
-const processLargePDF = async (filePath) => {
-  try {
-    const pdfBuffer = fs.readFileSync(filePath);
-    const data = await pdfParse(pdfBuffer);
-
-    // Handle large PDFs by splitting them into chunks
-    const textChunks = data.text ? data.text.match(/[\s\S]{1,5000}/g) || [""] : [""];
-
-    console.log(`PDF split into ${textChunks.length} chunks`);
-
-    const responses = await Promise.allSettled(textChunks.map((chunk) => callGroqAPI(chunk)));
-    return responses.map(res => res.status === "fulfilled" ? res.value : "").join("\n");
-  } catch (error) {
-    logStep("Process PDF", `Error: ${error.message}`, "error");
-    throw new Error("PDF processing failed");
-  }
-};
-
-// Extract details dynamically using Groq LLaMA 3 API
-const extractDetailsWithGroq = async (text) => {
-  try {
-    const prompt = `Extract key details from the following document:\n${text}`;
-    logStep("Groq API", `Sending prompt to Groq API`);
-    return await callGroqAPI(prompt);
-  } catch (error) {
-    logStep("Groq API", `Failed: ${error.message}`, "error");
-    throw new Error("Failed to get AI response");
-  }
-};
-
-// Process PDF and extract details
-const processPdf = async (pdfPath) => {
-  try {
-    logStep("Process PDF", `Processing PDF: ${pdfPath}`);
-
-    // Step 1: Extract text using Python
-    const extractedText = await extractTextFromPDF(pdfPath);
-    if (!extractedText || !extractedText.text) {
-      throw new Error("No text extracted from the document.");
-    }
-
-    // Step 2: Extract structured details dynamically
-    const extractedDetails = await extractDetailsWithGroq(extractedText.text);
-    if (!extractedDetails) {
-      throw new Error("Failed to extract structured details from the document.");
-    }
-
-    // Step 3: Save extracted details to MongoDB
-    const newDocument = new Document({
-      filename: path.basename(pdfPath),
-      extractedText: extractedText.text,
-      extractedDetails,
-      metadata: extractedText.metadata || {},
-    });
-
-    try {
-      await newDocument.save();
-      logStep("MongoDB", "Document saved to MongoDB");
-    } catch (error) {
-      logStep("MongoDB", `Failed to save document: ${error.message}`, "error");
-      throw new Error("Failed to save document to MongoDB");
-    }
-
-    // Step 4: Cleanup Temporary PDF File
-try {
-  if (fs.existsSync(pdfPath)) {
-    fs.unlinkSync(pdfPath);
-    logStep("Cleanup", `Temporary file deleted: ${pdfPath}`);
-  }
-} catch (error) {
-  logStep("Cleanup", `Failed to delete temporary file: ${error.message}`, "error");
+// Ensure upload directory exists
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
-    return newDocument;
-  } catch (error) {
-    logStep("Error", `Processing failed: ${error.message}`, "error");
-    throw error;
+// Validate user existence
+async function validateUser(userId) {
+  if (!userId || isNaN(userId)) {
+    throw new Error("Unauthorized: Invalid userId");
   }
-};
+  const user = await User.findOne({ userId });
+  if (!user) {
+    throw new Error("Unauthorized: User does not exist");
+  }
+}
 
-module.exports = { processPdf, processLargePDF, extractDetailsMiddleware };
+// Cleanup file helper
+async function cleanUpFile(filePath) {
+  if (filePath && fs.existsSync(filePath)) {
+    try {
+      await fs.promises.unlink(filePath);
+    } catch (_) {}
+  }
+}
+
+// 1. Upload document, extract text, cache in Redis
+async function uploadDocument(req, res) {
+  let filePath;
+  try {
+    const userId = Number(req.body.userId);
+    await validateUser(userId);
+
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ success: false, message: "No file uploaded" });
+    }
+    filePath = file.path;
+
+    // Validate MIME type and size
+    if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+      await cleanUpFile(filePath);
+      return res.status(400).json({ success: false, message: "Only PDF files are allowed" });
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      await cleanUpFile(filePath);
+      return res.status(400).json({ success: false, message: "File exceeds size limit" });
+    }
+
+    // Generate identifiers
+    const customId = uuidv4();
+    const buffer   = await fs.promises.readFile(filePath);
+    const checksum = crypto.createHash("sha256").update(buffer).digest("hex");
+
+    // Extract text using OCR fallback
+    let extractedText = "";
+    try {
+      const result = await extractTextWithOCR(filePath);
+      extractedText = (result.text || "").trim();
+    } catch (err) {
+      console.warn("OCR error:", err.message);
+    }
+
+    // Cache temporarily in Redis
+    const tempData = { userId, customId, filename: file.originalname,
+      filePath, checksum, status: "pending",
+      metadata: { fileSize: file.size, mimeType: file.mimetype }, extractedText };
+    if (extractedText.length > 20) {
+      await redisClient.setex(`extracted_document:${customId}`, 3600, JSON.stringify(tempData));
+    }
+
+    res.json({ success: true, data: { customId, extractedText } });
+  } catch (err) {
+    console.error("uploadDocument error:", err);
+    if (filePath) await cleanUpFile(filePath);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// 2. Extract text endpoint: check MongoDB then Redis
+async function extractText(req, res) {
+  try {
+    const { customId } = req.body;
+    if (!customId) {
+      return res.status(400).json({ success: false, message: "Missing customId" });
+    }
+
+    // Try MongoDB
+    const doc = await Document.findOne({ customId }).select("extractedText");
+    if (doc && doc.extractedText) {
+      return res.json({ success: true, text: doc.extractedText, source: "mongodb" });
+    }
+
+    // Try Redis
+    const redisKey = `extracted_document:${customId}`;
+    const cached  = await redisClient.get(redisKey);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      return res.json({ success: true, text: parsed.extractedText, source: "redis" });
+    }
+
+    res.status(404).json({ success: false, message: "Text not found" });
+  } catch (err) {
+    console.error("extractText error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// 3. Chatbot query: load from Redis or MongoDB
+async function handleChatbotQuery(req, res) {
+  try {
+    const { customId, userId, question } = req.body;
+    if (!customId || !userId || !question) {
+      return res.status(400).json({ success: false, message: "Missing parameters" });
+    }
+    await validateUser(Number(userId));
+
+    const redisKey = `extracted_document:${customId}`;
+    let data = await redisClient.get(redisKey);
+
+    if (!data) {
+      const d = await Document.findOne({ customId });
+      if (!d) {
+        return res.status(404).json({ success: false, message: "Document not found" });
+      }
+      data = JSON.stringify({ text: d.extractedText, pages: d.metadata?.pageCount || 0 });
+      await redisClient.set(redisKey, data);
+      if (!d.extractedText) {
+        d.extractedText = JSON.parse(data).text;
+        await d.save();
+      }
+    }
+
+    const { text, pages } = JSON.parse(data);
+    res.json({ success: true, text, pages });
+  } catch (err) {
+    console.error("handleChatbotQuery error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// 4. List documents with pagination
+async function getDocuments(req, res) {
+  try {
+    const userId = Number(req.query.userId);
+    await validateUser(userId);
+
+    const page  = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+    const skip  = (page - 1) * limit;
+
+    const query = { userId };
+    if (req.query.status) query.status = req.query.status;
+
+    const [total, docs] = await Promise.all([
+      Document.countDocuments(query),
+      Document.find(query)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .select("filename status createdAt metadata")
+    ]);
+
+    res.json({ success: true, data: docs, pagination: { total, page, limit, pages: Math.ceil(total/limit) } });
+  } catch (err) {
+    console.error("getDocuments error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// 5. Fetch single document by customId
+async function getDocumentById(req, res) {
+  try {
+    const { documentId } = req.params;
+    if (!uuidValidate(documentId)) {
+      return res.status(400).json({ success: false, message: "Invalid document ID" });
+    }
+    const doc = await Document.findOne({ customId: documentId }).select("-filePath -__v");
+    if (!doc) {
+      return res.status(404).json({ success: false, message: "Document not found" });
+    }
+    res.json({ success: true, data: doc });
+  } catch (err) {
+    console.error("getDocumentById error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// 6. Archive temp document from Redis to MongoDB
+async function archiveTempDocument(req, res) {
+  try {
+    const { customId, userId } = req.body;
+    await validateUser(Number(userId));
+
+    const redisKey = `extracted_document:${customId}`;
+    const cached  = await redisClient.get(redisKey);
+    if (!cached) {
+      return res.status(404).json({ success: false, message: "Temporary document not found" });
+    }
+    const parsed = JSON.parse(cached);
+
+    const newDoc = new Document({
+      userId: Number(userId),
+      customId,
+      filename: parsed.filename || "",
+      filePath: parsed.filePath || "",
+      documentType: parsed.documentType || null,
+      extractedText: parsed.extractedText || "",
+      status: "archived",
+      metadata: parsed.metadata || {}
+    });
+    await newDoc.save();
+    await redisClient.del(redisKey);
+
+    res.json({ success: true, message: "Document archived successfully", documentId: newDoc._id });
+  } catch (err) {
+    console.error("archiveTempDocument error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+module.exports = {
+  uploadDocument,
+  extractText,
+  handleChatbotQuery,
+  getDocuments,
+  getDocumentById,
+  archiveTempDocument
+};

@@ -112,7 +112,7 @@ exports.loginUser = async (req, res) => {
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",  // Use secure cookies in production
-      sameSite: "None",  // Prevents CSRF attacks
+      sameSite: "Lax",  // Prevents CSRF attacks
       maxAge: 30 * 24 * 60 * 60 * 1000  // 7 days
     });
     //  Generate unique session ID
@@ -310,7 +310,7 @@ exports.refreshToken = async (req, res) => {
       res.cookie("refreshToken", newRefreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: "None",
+        sameSite: "lax",
         maxAge: 30 * 24 * 60 * 60 * 1000, // 7 days
       });
 

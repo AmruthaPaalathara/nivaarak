@@ -7,20 +7,21 @@ const ApplicationByTypeChart = ({
                                     externalData = null
                                 }) => {
     const chartContainer = useRef(null);
-    const [totalData, setTotalData] = useState([]);
-    const [statusData, setStatusData] = useState([]);
-    const [error, setError] = useState(null);
 
+    // ─── STATE HOOKS (always run) ─────────────────────────────────────────────
+    const [totalData, setTotalData]     = useState([]);
+    const [statusData, setStatusData]   = useState([]);
+    const [error, setError]             = useState(null);
+
+    // ─── FETCH EFFECT (always run) ───────────────────────────────────────────
     useEffect(() => {
         const fetchChartData = async () => {
             try {
                 console.log("API Endpoint being called:", apiEndpoint);
-                const response = await API.get(apiEndpoint);
-                const result = response.data;
-                if (result?.success !== false) {
+                const { data: result } = await API.get(apiEndpoint);
+                if (result.success !== false) {
                     setTotalData(result.totalApplications || []);
                     setStatusData(result.statusBreakdown || []);
-                    console.log("Chart Data Response:", result);
                 } else {
                     console.warn("API responded with success=false:", result);
                     setError(result.message || "Failed to fetch data.");
@@ -31,66 +32,76 @@ const ApplicationByTypeChart = ({
             }
         };
 
-        if (!externalData) {
-            fetchChartData();
-        } else {
+        if (externalData) {
             setTotalData(externalData.totalApplications || []);
             setStatusData(externalData.statusBreakdown || []);
+        } else {
+            fetchChartData();
         }
     }, [apiEndpoint, externalData]);
 
-    // Chart config (memoized for performance)
+    // ─── DERIVED VALUES ────────────────────────────────────────────────────────
+    const hasStatus = statusData.length > 0;
+
+    // ─── MEMOIZED CHART OPTIONS (always run) ──────────────────────────────────
     const chartOptions = useMemo(() => ({
-        chart: { type: 'column' },
+        chart: { type: "column" },
         title: { text: title },
         xAxis: {
-            categories: totalData.map(item => item.documentType),
-            title: { text: 'Document Type' }
+            categories: totalData.map(d => d.documentType),
+            title: { text: "Document Type" }
         },
         yAxis: {
             min: 0,
-            title: { text: 'Number of Applications' },
-            stackLabels: { enabled: true }
+            title: { text: "Number of Applications" }
         },
         tooltip: { shared: true },
         plotOptions: {
-            column: { stacking: 'normal' }
+            column: { stacking: hasStatus ? "normal" : undefined }
         },
-        series: ["Approved", "Pending", "Rejected"].map(status => ({
-            name: status,
-            data: totalData.map(doc => {
-                const entry = statusData.find(item =>
-                    item.documentType === doc.documentType && item.status === status
-                );
-                return entry ? entry.count : 0;
-            })
-        })),
+        series: hasStatus
+            ? ["Approved", "Pending", "Rejected"].map(status => ({
+                name: status,
+                data: totalData.map(doc => {
+                    const entry = statusData.find(
+                        s => s.documentType === doc.documentType && s.status === status
+                    );
+                    return entry ? entry.count : 0;
+                })
+            }))
+            : [{
+                name: "Total",
+                data: totalData.map(doc => doc.count),
+                colorByPoint: true
+            }],
         credits: { enabled: false }
-    }), [totalData, statusData, title]);
+    }), [totalData, statusData, title, hasStatus]);
 
+    // ─── CHART RENDER EFFECT (always run) ─────────────────────────────────────
     useEffect(() => {
+        if (!chartContainer.current) return;
         if (typeof window.Highcharts === "undefined") {
             console.error("Highcharts is not loaded globally.");
             return;
         }
+        // draw/refresh chart
+        window.Highcharts.chart(chartContainer.current, chartOptions);
+    }, [chartOptions]);
 
-        if (window.Highcharts && chartContainer.current && totalData.length > 0) {
-            window.Highcharts.chart(chartContainer.current, chartOptions);
-        }
-    }, [chartOptions, totalData]);
-
-    // Handle error or empty chart
+    // ─── CONDITIONAL RENDERS ─────────────────────────────────────────────────
     if (error) {
         return <p style={{ color: "red" }}>{error}</p>;
     }
 
-    const processedData = totalData?.length > 0 ? totalData : [{ documentType: "No Data", count: 0 }];
-    if (processedData.length === 1 && processedData[0].documentType === "No Data") {
+    if (totalData.length === 0) {
         return <p>No application data available.</p>;
     }
 
     return (
-        <div ref={chartContainer} style={{ width: '100%', height: '500px', maxWidth: '100%' }} />
+        <div
+            ref={chartContainer}
+            style={{ width: '100%', height: '500px', maxWidth: '100%' }}
+        />
     );
 };
 

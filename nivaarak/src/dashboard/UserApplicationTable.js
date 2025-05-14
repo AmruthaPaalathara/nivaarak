@@ -1,6 +1,27 @@
 import React, { useEffect, useState } from "react";
 import API from "../utils/api";
-import { Table, Spinner, Button } from "react-bootstrap";
+import { Table, Spinner, Button, Badge } from "react-bootstrap";
+
+function EmergencyBadge({ level = "Low" }) {
+    const variantMap = {
+        low:      "light",    // muted background
+        medium:   "secondary",
+        high:     "warning",
+        critical: "danger"
+    };
+
+    // lookup bg variant, default to light
+    const bg = variantMap[level.toLowerCase()] || "light";
+
+    // If bg is light, make text dark for readability
+    const textColor = bg === "light" ? "dark" : "light";
+
+    return (
+        <Badge bg={bg} text={textColor}>
+            {level}
+        </Badge>
+    );
+}
 
 const UserApplicationsTable = () => {
     const [applications, setApplications] = useState([]);
@@ -41,7 +62,6 @@ const UserApplicationsTable = () => {
                         <thead>
                         <tr>
                             <th>SL.NO</th>
-                            <th>Applicant Name</th>
                             <th>Document Type</th>
                             <th>Department</th>
                             <th>Submitted Date</th>
@@ -54,7 +74,7 @@ const UserApplicationsTable = () => {
                         {currentApplications.map((app, index) => (
                             <tr key={app._id || index}>
                                 <td>{index + 1 + indexOfFirstApplication}</td>
-                                <td>{app.applicantName || "Unknown"}</td>
+
                                 <td>
                                     {typeof app.documentType === "object"
                                         ? app.documentType.documentType
@@ -62,7 +82,9 @@ const UserApplicationsTable = () => {
                                 </td>
                                 <td>{app.department || "N/A"}</td>
                                 <td>{app.createdAt ? new Date(app.createdAt).toLocaleDateString() : "N/A"}</td>
-                                <td>{app.emergencyLevel || "Normal"}</td>
+                                <td>
+                                    <EmergencyBadge level={app.emergencyLevel || "Low"} />
+                                </td>
                                 <td>{app.requiredBy ? new Date(app.requiredBy).toLocaleDateString() : "N/A"}</td>
                                 <td>{app.status || "Unknown"}</td>
                             </tr>

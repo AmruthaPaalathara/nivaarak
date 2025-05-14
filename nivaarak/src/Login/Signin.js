@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext'; // Import useAuth
 import { Form, Button, Container, Row, Col, Alert, Spinner } from 'react-bootstrap';
@@ -17,6 +17,11 @@ function Signin() {
     const { login } = useAuth(); // Use the login function from AuthContext
 
     // const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001'; // Fallback API URL
+
+    const location = useLocation();
+    useEffect(() => {
+        console.log("Current path is now: ", location.pathname);
+    }, [location]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -130,21 +135,24 @@ function Signin() {
                             </Button>
                         </div>
 
-                        <div className="mt-3 text-center">
-                            <p>
-                                Don't have an account?{' '}
-                                <Link to="/registration" className="text-decoration-none" style={{ color: 'black' }}>
-                                    Register here
-                                </Link>
-                            </p>
-                            <p>
-                                Forgot password?{' '}
-                                <Link to="/forgot-password" className='text-decoration-none' style={{ color: 'black' }}>
-                                    Reset it here
-                                </Link>
-                            </p>
-                        </div>
+
                     </Form>
+
+                    <div className="mt-3 text-center">
+                        <p>
+                            Don't have an account?{' '}
+                            <Link to="/registration" className="text-decoration-none" style={{ color: 'black' }} onClick={() => console.log("Link clicked! currentPath:", window.location.pathname)}
+                            >
+                                Register here
+                            </Link>
+                        </p>
+                        <p>
+                            Forgot password?{' '}
+                            <Link to="/forgot-password" className='text-decoration-none' style={{ color: 'black' }}>
+                                Reset it here
+                            </Link>
+                        </p>
+                    </div>
                 </Col>
             </Row>
         </Container>

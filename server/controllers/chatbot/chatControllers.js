@@ -112,7 +112,7 @@ const fetchDocumentContext = async (documentId, userQuery) => {
     // If no matching lines, return a truncated version of the fullText (first 1000 characters)
     return relevantLines || fullText.substring(0, 1000);
   } catch (error) {
-    console.error("Error extracting text:", error.message);
+    console.error("Error Applicationextracting text:", error.message);
     return "";
   }
 };

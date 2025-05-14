@@ -6,5 +6,8 @@ const departmentMappingSchema = new mongoose.Schema({
     department: { type: String, required: true },
 });
 
-const DepartmentMapping = mongoose.model('DepartmentMapping', departmentMappingSchema);
+const DepartmentMapping =
+    mongoose.models.DepartmentMapping ||
+    mongoose.model('DepartmentMapping', departmentMappingSchema);
+
 module.exports = DepartmentMapping;

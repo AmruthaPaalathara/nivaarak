@@ -4,7 +4,7 @@ const generatePdfSchema = new mongoose.Schema({
   userId: { type: String, required: true, ref:"User" }, //  Custom userId instead of ObjectId
   name: { type: String, required: true },
   documentType: { type: String, required: true , ref:"UserDocument" },
-  status: { type: String, required: true, enum: ["pending", "generated", "failed"] },// Limits values
+  status: { type: String, required: true, enum: ['pending','generated','failed','rejected'],default: 'pending' },// Limits values
   pdfContent: { type: String },
 }, { timestamps: true });
 

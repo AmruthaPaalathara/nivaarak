@@ -76,7 +76,8 @@ const certificateApplicationSchema = new mongoose.Schema(
       flatFiles: {
           type: [String],
           default: [],
-      },      extractedDetails: {
+      },
+      extractedDetails: {
           type: Map,
           of: String, // or Object if the structure is complex
           default: {},

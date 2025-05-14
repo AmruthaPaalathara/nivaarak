@@ -8,7 +8,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const cleanupUploads = require("../../middleware/application/fileCleanUp");
-const { extractTextFromPdf } = require("../../extracting/process_uploaded_docs");
+const { extractTextFromPdf } = require("../../Applicationextracting/process_uploaded_docs");
 
 // Constants
 const ALLOWED_FILE_TYPES = ["application/pdf"];

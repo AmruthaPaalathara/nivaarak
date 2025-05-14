@@ -27,6 +27,7 @@ const adminRoutes = require("./routes/Dashboard/adminCharts/chartRoutes");
 const eligibilityRoutes = require("./routes/eligibility/eligibilityRoutes");
 const { adminDashboardLimiter } = require("./middleware/rateLimiting");
 const userTableRoutes = require("./routes/Dashboard/userTableRoutes");
+const verifyRoutes = require("./routes/verifyDocument/verifyRoutes")
 
 const requiredEnvVars = [
   "JWT_SECRET",
@@ -102,6 +103,7 @@ app.use(`${API_BASE}/admin-dashboard`,adminDashboardLimiter);
 app.use(`${API_BASE}/admin-dashboard`, adminRoutes);
 app.use(`${API_BASE}/eligibility`, eligibilityRoutes);
 app.use(`${API_BASE}/userTable`, userTableRoutes);
+app.use(`${API_BASE}/verify`, verifyRoutes);
 
 // Connect to MongoDB
 const connectToMongoDB = async (retries = 5) => {

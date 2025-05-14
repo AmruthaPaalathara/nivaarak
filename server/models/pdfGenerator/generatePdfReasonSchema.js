@@ -7,8 +7,8 @@ const generatePdfReasonSchema = new mongoose.Schema({
   benefits: { type: [String], required: true },
   eligibility: { type: [String], required: true },
   rejectionReason: { type: [String], required: true },
-  resubmission: { type: String, required: true },
-  status: { type: String, required: true, enum: ["pending", "generated", "failed"],  default: "pending", },
+  resubmission:  { type: mongoose.Schema.Types.Mixed, default: {} },
+  status: { type: String, required: true, enum:  ['pending','generated','failed','rejected'],  default: "pending", },
 }, { timestamps: true });
 
 // Normalize documentType

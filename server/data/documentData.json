@@ -1,0 +1,124 @@
+{
+  "Birth Certificate": {
+    "required_documents": [
+      "Birth Proof",
+      "Parent's Identity Proof",
+      "Parent's Address Proof",
+      "Parent's Marriage Certificate"
+    ]
+  },
+  "Death Certificate": {
+    "required_documents": [
+      "Death Certificate",
+      "Identity Proof",
+      "Address Proof"
+    ]
+  },
+  "Income Certificate": {
+    "required_documents": [
+      "Income Proof",
+      "Identity Proof",
+      "Address Proof",
+      "Age Proof",
+      "Salary Slip",
+      "Bank Statement"
+    ]
+  },
+  "Domicile Certificate": {
+    "required_documents": [
+      "Residence Proof",
+      "Identity Proof",
+      "Aadhaar Card",
+      "School Leaving Certificate"
+    ]
+  },
+  "Caste Certificate": {
+    "required_documents": [
+      "Caste Proof",
+      "Domicile Proof",
+      "Identity Proof",
+      "Address Proof"
+    ]
+  },
+  "Agricultural Certificate": {
+    "required_documents": [
+      "Address Proof",
+      "Identity Proof",
+      "Land Ownership Proof"
+    ]
+  },
+  "Non- Creamy Layer": {
+    "required_documents": [
+      "Income Proof",
+      "Identity Proof",
+      "Address Proof",
+      "Caste Proof"
+    ]
+  },
+  "Property Documents": {
+    "required_documents": [
+      "Property Ownership Proof",
+      "Identity Proof"
+    ]
+  },
+  "Marriage Certificates": {
+    "required_documents": [
+      "Aadhaar Proof",
+      "Wedding Invitation Proof",
+      "Marriage Declaration",
+      "Address Proof"
+    ]
+  },
+  "Senior Citizen Certificate": {
+    "required_documents": [
+      "Aadhaar Card",
+      "Age Proof"
+    ]
+  },
+  "Solvency Certificate": {
+    "required_documents": [
+      "Bank Statements",
+      "Property Documents"
+    ]
+  },
+  "Shop and Establishment Registration": {
+    "required_documents": [
+      "Aadhaar Card",
+      "Rent Agreement",
+      "Electricity Bill"
+    ]
+  },
+  "Contract Labour License": {
+    "required_documents": [
+      "Employer Details",
+      "Aadhaar Card",
+      "Proof of Business"
+    ]
+  },
+  "Factory Registration Certificate": {
+    "required_documents": [
+      "Factory Layout Plan",
+      "Aadhaar Card",
+      "Proof of Ownership"
+    ]
+  },
+  "Boiler Registration Certificate": {
+    "required_documents": [
+      "Manufacturer Approval",
+      "Aadhaar Card",
+      "Technical Specification"
+    ]
+  },
+  "Landless Certificate": {
+    "required_documents": [
+      "Revenue Records",
+      "Aadhaar Card"
+    ]
+  },
+  "New Water Connection": {
+    "required_documents": [
+      "Proof of Land Ownership",
+      "Aadhaar Card"
+    ]
+  }
+}

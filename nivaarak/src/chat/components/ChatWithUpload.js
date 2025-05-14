@@ -34,13 +34,13 @@ const fetchDocumentTextFromAPI = async (documentId) => {
       console.log("Text extracted from document:", extractResponse.data.text);
       return extractResponse.data.text;
     } else {
-      toast.error(extractResponse.data.message || "Error extracting text.");
+      toast.error(extractResponse.data.message || "Error Applicationextracting text.");
       console.error("Extraction failed:", extractResponse.data.message);
       return "";
     }
   } catch (error) {
-    console.error("Error extracting text:", error.response?.data || error.message);
-    toast.error("Error extracting text.");
+    console.error("Error Applicationextracting text:", error.response?.data || error.message);
+    toast.error("Error Applicationextracting text.");
     return "";
   }
 };
