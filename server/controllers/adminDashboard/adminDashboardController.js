@@ -11,7 +11,18 @@ const UserDocument = require("../../models/application/userDocumentSchema");
 exports.getAllAdminApplications = async (req, res) => {
     try {
         // 1) Fetch raw applications + populate only the applicant (User) by userId
-        let applications = await Certificate.find()
+        let applications = await Certificate.find(
+            {},                            // no filter
+            {                              // projection: include only the fields you care about
+                firstName: 1,
+                lastName: 1,
+                documentType: 1,
+                emergencyLevel: 1,
+                requiredBy: 1,
+                status: 1,
+                email: 1,                    // <<–– make sure you project the saved email
+            }
+        )
             .populate({
                 path: "applicant",
                 model: "User",

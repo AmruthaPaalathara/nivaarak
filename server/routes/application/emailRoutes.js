@@ -20,16 +20,31 @@ router.post("/send-email", async (req, res) => {
     }
 
     try {
+        const docTypeClean = documentType.trim();
+        const docTypeKey   = docTypeClean.toLowerCase();
+
         console.log("Fetching generated PDF from database...");
-        const pdfRecord = await GeneratedPDF.find({
-            userId: String(userId),
-            documentType: documentType.trim().toLowerCase(),
-        });
+        const pdfRecord = await GeneratedPDF
+            .find({
+                userId:       String(userId),
+                documentTypeKey: docTypeKey
+            })
+            .sort({ createdAt: -1 })
+            .limit(1);
 
         if (!pdfRecord.length) {
             console.log("Generated PDFs not found.");
             return res.status(200).json({ success: false, message: "No generated PDFs available for this user." });
         }
+
+        // now `pdfRecord[0]` is the one we want
+        const latestPdf = pdfRecord[0];
+        const fileName = `${documentType.replace(/\s+/g, "_")}.pdf`;
+        const filePath = path.join(__dirname, fileName);
+
+        // write it out temporarily
+        fs.writeFileSync(filePath, Buffer.from(latestPdf.pdfContent, "base64"));
+
 
         const attachments = pdfRecord.map((pdfRecord, index) => {
             const fileName = `${documentType.replace(/\s+/g, "_")}_${index + 1}.pdf`;

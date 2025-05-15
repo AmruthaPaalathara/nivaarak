@@ -1,6 +1,6 @@
 const express = require("express");
 const pdfController = require("../../controllers/pdf/generatePdfController.js");
-const fetchLlamaData = require("../../middleware/pdfGenerator/llama3Middleware.js");
+const getAiData     = require("../../middleware/pdfGenerator/getAiData");
 const { authenticateJWT, authenticateSession } = require("../../middleware/authenticationMiddleware/authMiddleware.js");
 const errorHandler = require("../../middleware/errorHandler.js");
 const { isAdmin } = require("../../middleware/rbac");
@@ -19,7 +19,7 @@ router.post(
     "/generate-pdf",
     authenticateJWT(),
     isAdmin , // or your auth middleware
-    fetchLlamaData,         // ← run the AI prompt first
+    getAiData,           // ← runs before generatePDF
     async (req, res) => {
         await pdfController.generatePDF(req, res);
     }

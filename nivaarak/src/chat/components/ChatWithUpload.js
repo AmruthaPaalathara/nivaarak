@@ -15,6 +15,8 @@ import API from "../../utils/api"; // Import the pre-configured axios instance
 console.log("API URL:", process.env.REACT_APP_API_URL);
 console.log(" ChatWithUpload component is rendering...");
 
+const PRONOUN_REGEX = /\b(it|this document|that document|that)\b/i;
+
 const fetchDocumentTextFromAPI = async (documentId) => {
   const accessToken = localStorage.getItem("accessToken");
 
@@ -45,6 +47,11 @@ const fetchDocumentTextFromAPI = async (documentId) => {
   }
 };
 
+function shouldUseDocumentContext(message, documentId) {
+  return Boolean(documentId && PRONOUN_REGEX.test(message));
+}
+
+
 // API function to send a message
 const ChatWithUpload = ({ currentSessionId , onUploadSuccess = () => {} }) => {
   const [message, setMessage] = useState(""); //current input
@@ -58,11 +65,14 @@ const ChatWithUpload = ({ currentSessionId , onUploadSuccess = () => {} }) => {
   const [messages, setMessages] = useState([]); //chat history
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState(null);
+  const [voiceLang, setVoiceLang] = useState("en-US");
 
   const handleRemove = () => {
     setUploadedFile(null);
     setUploadProgress(0);
   };
+
+
 
   const {
     transcript, // The transcribed speech text
@@ -79,31 +89,24 @@ const ChatWithUpload = ({ currentSessionId , onUploadSuccess = () => {} }) => {
   }, [isRecording, transcript]);
 
   // Handle the start/stop of speech input
-  const handleVoiceInput = () => {
+  function handleVoiceInput() {
     if (isRecording) {
-      // Stop the recording and process the recognized speech
+      SpeechRecognition.stopListening();
       setIsRecording(false);
-      SpeechRecognition.stopListening();  // Stop the listening process
-      console.log("Stopped recording...");
     } else {
-      // Start recording
       setIsRecording(true);
-      SpeechRecognition.startListening({
-        continuous: true, // Keep listening continuously
-        language: "mr-IN", // Specify the language code for Marathi
-      });
-      console.log("Started recording...");
+      SpeechRecognition.startListening({ continuous: true, language: voiceLang });
     }
-  };
+  }
 
-  const handlePlayAudio = (text) => {
+  function handlePlayAudio(text) {
     const speech = new SpeechSynthesisUtterance(text);
-    speech.lang = "en-US"; // Set language (adjust if needed)
-    speech.rate = 1.0; // Adjust speech speed
+    speech.lang = voiceLang;
+    speech.rate = 1.0;
     speechSynthesis.speak(speech);
-  };
+  }
 
-  const sendMessage = async (message, sessionId, setSessionId, messages, setMessages, documentId, extractedText) => {
+  const sendMessage = async (message, sessionId, setSessionId, messages, setMessages, documentId, extractedText, useDocContext  = false) => {
 
     if (!message.trim()) {
       toast.error("Message cannot be empty.");
@@ -146,6 +149,7 @@ const ChatWithUpload = ({ currentSessionId , onUploadSuccess = () => {} }) => {
         message,
         sessionId: session,
         documentId: documentId || null,
+        useDocContext,
         context, // Updated extracted text
         chatHistory, // Include chat history for AI context
       };
@@ -167,7 +171,7 @@ const ChatWithUpload = ({ currentSessionId , onUploadSuccess = () => {} }) => {
 
         setMessages((prevMessages) => [
           ...prevMessages,
-          { role: "ai", content: data.reply, timestamp: new Date() }
+          { role: "ai", content: data.message, timestamp: new Date() }
         ]);
         return data;
       } catch (error) {
@@ -378,8 +382,11 @@ const ChatWithUpload = ({ currentSessionId , onUploadSuccess = () => {} }) => {
 
       const tempMessages = [...messages, userMessage];
 
+      // In handleSendMessage (before sending payload):
+      const useDocContext = shouldUseDocumentContext(currentMessage, uploadedFile?.documentId);
+
       // Send the message to the backend via our sendMessage API function
-      const chatResponse = await sendMessage(currentMessage, sessionId, setSessionId, tempMessages, setMessages, uploadedFile?.documentId || null, extractedText || "");
+      const chatResponse = await sendMessage(currentMessage, sessionId, setSessionId, tempMessages, setMessages, uploadedFile?.documentId || null, extractedText || "", useDocContext);
 
       console.log("Received chatResponse from backend:", chatResponse);
 
@@ -401,20 +408,23 @@ const ChatWithUpload = ({ currentSessionId , onUploadSuccess = () => {} }) => {
   };
 
   const archiveChatSession = async () => {
+    const userId = localStorage.getItem("userId");
+    if (!currentSessionId || !userId) return;
+
     try {
-      if (!currentSessionId) {
-        console.warn("Skipping archive: No session ID found.");
-        return;
-      }
-
-      const data = { customId: currentSessionId };
-      const response = await axios.post('http://localhost:3001/api/chat/archive', data, { withCredentials: true });
-
-      console.log(response.data);
-    } catch (error) {
-      console.error('Error archiving session:', error);
-    }
-  };
+      await axiosInstance.post(
+                 "/chat/archive",
+                 {
+                   sessionId: currentSessionId,
+                   userId,
+                   documentId: uploadedFile?.documentId || null
+             },
+             { headers: { Authorization: `Bearer ${localStorage.getItem("accessToken")}` } }
+           );
+         } catch (err) {
+           console.error("Archive error:", err);
+         }
+     };;
   useEffect(() => {
     let timeout;
 
@@ -446,6 +456,25 @@ const ChatWithUpload = ({ currentSessionId , onUploadSuccess = () => {} }) => {
               document.removeEventListener("visibilitychange", handleVisibilityChange);
           };
       }, [currentSessionId]);
+   // Also handle browser/tab close
+       useEffect(() => {
+           const handleBeforeUnload = (e) => {
+               // synchronous request to archive
+                   navigator.sendBeacon(
+                         `${axiosInstance.defaults.baseURL}/chat/archive`,
+                         JSON.stringify({
+                               sessionId: currentSessionId,
+                       userId: localStorage.getItem("userId"),
+                       documentId: uploadedFile?.documentId || null
+                 })
+               );
+             };
+
+               window.addEventListener("beforeunload", handleBeforeUnload);
+           return () => {
+               window.removeEventListener("beforeunload", handleBeforeUnload);
+             };
+         }, [currentSessionId, uploadedFile]);
 
       return (
     <Container className="chatbot-container mb-3">
@@ -519,6 +548,11 @@ const ChatWithUpload = ({ currentSessionId , onUploadSuccess = () => {} }) => {
               {/* <pre>{JSON.stringify(messages, null, 2)}</pre> */}
 
 
+              <select value={voiceLang} onChange={e => setVoiceLang(e.target.value)}>
+                <option value="en-US">English</option>
+                <option value="hi-IN">Hindi</option>
+                <option value="mr-IN">Marathi</option>
+              </select>
 
               {/* Message Input Section */}
               <div className="d-flex align-items-center mt-3">

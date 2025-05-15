@@ -1,4 +1,4 @@
-// server/controllers/chatbot/documentController.js
+
 
 const mongoose = require("mongoose");
 const { exec } = require("child_process");

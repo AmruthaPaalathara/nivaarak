@@ -10,6 +10,8 @@ import UserApplicationsTable from "./UserApplicationTable";
 import AdminApplicationsTable from "./AdminApplicationTable";
 import DepartmentApplicationsTable from "./DepartmentApplicationsTable";
 import StatusApplicationsTable from "./StatusApplicationsTable";
+import EmergencyTable from "./AdminEmergencyTable";
+
 
 const Dashboard = () => {
   const [userData, setUserData] = useState(null);
@@ -141,6 +143,14 @@ const Dashboard = () => {
                           <li style={{ cursor: "pointer", padding: "5px" }} onClick={() => setActiveTab("adminApplications")}>
                             View All Applications
                           </li>
+
+                          <li
+                              style={{ cursor: "pointer", padding: "5px" }}
+                              onClick={() => setActiveTab("emergency")}
+                          >
+                            Filter by Emergency
+                          </li>
+
                         </>
                     ) : (
                         <>
@@ -239,6 +249,7 @@ const Dashboard = () => {
                       {activeTab === "department" && <DepartmentApplicationsTable />}
                       {activeTab === "status" && <StatusApplicationsTable />}
                       {activeTab === "adminApplications" && <AdminApplicationsTable />}
+                      {activeTab === "adminApplications" && <EmergencyTable />}
                     </>
                 )}
               </Card.Body>

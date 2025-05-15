@@ -220,6 +220,7 @@ async (req, res) => {
 
       console.log("extracted details:", extractedDetails);
 
+      console.log("details saving to mongodb while application form submission", req.body);
       // Save application
       const newApplication = new Certificate({
         applicant: userId,

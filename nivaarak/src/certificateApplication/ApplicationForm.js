@@ -75,6 +75,11 @@ const ApplicationForm = () => {
     } else {
       newErrors = newErrors.filter((error) => error.field !== name);
     }
+
+    if (name === "email") {
+      console.log("Typing email, raw value:", value);
+    }
+
     // Reset files and fileNames when documentType changes
     const updatedFormData = {
       ...formData,
@@ -123,8 +128,11 @@ const ApplicationForm = () => {
   };
 
   // Handle form submission
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const rawEmail = e.target.elements.email.value;
+    console.log("Email on submit (raw):", rawEmail);
+
     let validationErrors = [];
 
     // Validations
@@ -190,6 +198,9 @@ const ApplicationForm = () => {
       const token = localStorage.getItem("accessToken");
 
       // Step 1: Submit Application
+
+      console.log("About to send payload:", formData);
+
       const applyResponse = await API.post("/certificates/submit", formDataToSend);
       console.log("apply response:", applyResponse);
 

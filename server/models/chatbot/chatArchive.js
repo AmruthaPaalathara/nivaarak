@@ -5,7 +5,7 @@ const jwt = require("jsonwebtoken");
 const chatMessageSchema = new mongoose.Schema({
   role: { type: String, enum: ["user", "ai"], required: true }, //specifies who sent the message (user,asssistant)
   message: { type: String, required: true, trim: true, minlength:1, maxlength:5000 }, //stores the actual chat content, removes unnecessary spaces
-  timestamp: { type: Date, default: Date.now }, //sstores when the message was sent
+  timestamp: { type: Date, default: Date.now }, //stores when the message was sent
 }); 
 
 // Chat Archive Schema

@@ -4,6 +4,7 @@ const generatePdfReasonSchema = new mongoose.Schema({
   userId: { type: String, required: true, ref: "User" },
   name: { type: String, required: true },
   documentType: { type: String, required: true, ref: "UserDocument" },
+  documentTypeKey:{ type: String, required: true, index: true },
   benefits: { type: [String], required: true },
   eligibility: { type: [String], required: true },
   rejectionReason: { type: [String], required: true },

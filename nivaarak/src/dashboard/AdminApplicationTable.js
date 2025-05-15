@@ -12,6 +12,8 @@ const AdminApplicationsTable = () => {
     const [modalTitle, setModalTitle] = useState("");
     const [page, setPage] = useState(1);
     const perPage = 10;
+    const [showRejectModal, setShowRejectModal] = useState(false);
+    const [rejectModalText, setRejectModalText] = useState("");
 
     // map emergency level → bootstrap bg + always black text
     const EmergencyBadge = ({ level }) => {
@@ -86,7 +88,7 @@ const AdminApplicationsTable = () => {
 
     const handleReject = async (app) => {
         const token = localStorage.getItem("accessToken");
-
+try{
         // 1️⃣  Mark the application rejected
         await API.put(
             `/priority-applications/update-status/${app._id}`,
@@ -122,11 +124,22 @@ const AdminApplicationsTable = () => {
             { headers: { Authorization: `Bearer ${token}` } }
         );
 
+        // show confirmation
+        setRejectModalText(`Rejection email sent to ${app.email}`);
+        setShowRejectModal(true);
+
+
         // 5️⃣  Update your local state so the UI shows “Rejected”
         setApplications(apps =>
-            apps.map(a => a._id === app._id ? { ...a, status: "Rejected" } : a)
+            apps.map(a =>
+                a._id === app._id ? { ...a, status: "Rejected" } : a
+            )
         );
-    };
+    } catch (err) {
+        console.error("Reject + Notify failed:", err);
+        alert("Error rejecting & notifying applicant.");
+    }
+};
 
     // pagination
     const totalPages = Math.ceil(applications.length / perPage);
@@ -228,6 +241,24 @@ const AdminApplicationsTable = () => {
                 <Modal.Footer>
                     <Button variant="secondary" onClick={() => setShowModal(false)}>
                         Close
+                    </Button>
+                </Modal.Footer>
+            </Modal>
+
+            <Modal
+                show={showRejectModal}
+                onHide={() => setShowRejectModal(false)}
+                centered
+            >
+                <Modal.Header closeButton>
+                    <Modal.Title>Email Sent</Modal.Title>
+                </Modal.Header>
+                <Modal.Body>
+                    {rejectModalText}
+                </Modal.Body>
+                <Modal.Footer>
+                    <Button variant="primary" onClick={() => setShowRejectModal(false)}>
+                        OK
                     </Button>
                 </Modal.Footer>
             </Modal>

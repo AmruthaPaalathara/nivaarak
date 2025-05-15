@@ -38,8 +38,7 @@ const validateApplicationForm = [
   body("email")
     .trim()
     .isEmail()
-    .withMessage("Please enter a valid email address")
-    .normalizeEmail(), // Normalize email address
+    .withMessage("Please enter a valid email address"),
 
   body("phone")
     .trim()

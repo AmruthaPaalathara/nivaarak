@@ -1,11 +1,10 @@
 const mongoose = require("mongoose");
-const path = require("path");
 const mime = require("mime-types");
-const { User } = require("../authentication/userSchema");
+
 
 
 // Allowed file types
-const allowedFileTypes = ["application/pdf", "image/jpeg", "image/png"];
+const allowedFileTypes = ["application/pdf"];
 
 const certificateApplicationSchema = new mongoose.Schema(
   {
@@ -120,11 +119,16 @@ const certificateApplicationSchema = new mongoose.Schema(
 );
 
 certificateApplicationSchema.pre("save", function (next) {
-    if (!Array.isArray(this.statusHistory)) {
-        this.statusHistory = [];
+    // Only on first save, initialize with the starting status
+    if (this.isNew) {
+        this.statusHistory = [{
+            status: this.status,        // “Pending” by default
+            changedAt: this.createdAt || new Date()
+        }];
     }
     next();
 });
+
 
 
 

@@ -14,37 +14,42 @@ const { v4: uuidv4 } = require("uuid");
 
 const callAIService = async (userMessage) => {
   try {
-    console.log("Calling local Groq server with message:", userMessage);
+    console.log("Calling MT5 inference with message:", userMessage);
 
-    if (!process.env.GROQ_API_KEY) {
-      console.error("Missing GROQ_API_KEY. AI service cannot function.");
+    if (!process.env.HF_TOKEN) {
+      console.error("Missing HF_TOKEN. AI service cannot function.");
       return "AI service is temporarily unavailable.";
     }
 
-    console.log("Calling AI Service with message:", userMessage);
-    console.log("Using API Key:", process.env.GROQ_API_KEY);
-    console.log("Loaded API Key:", process.env.GROQ_API_KEY ? "✅ Exists" : "❌ Missing");
+    // Log that we have a token
+    console.log("Using HF_TOKEN:", process.env.HF_TOKEN.slice(0, 6) + "…");
 
-
-    // Simulating AI Call (Replace with actual API call)
+    // MT5 expects `{ inputs: string, options?: {...} }`
     const response = await axios.post(
-      "https://api.groq.com/openai/v1/chat/completions",
-      {
-        model: "llama3-8b-8192",
-        messages: [{ role: "user", content: userMessage }],
-      },
-      {
-        headers: {
-          "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-          "Content-Type": "application/json"
+        "https://api-inference.huggingface.co/models/google/mt5-base",
+        {
+          inputs: userMessage,
+          options: { wait_for_model: true }
         },
-      }
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.HF_TOKEN}`,
+            "Content-Type": "application/json"
+          },
+          timeout: 60000
+        }
     );
 
-    console.log("AI Response Data:", response.data);
-    return response.data.choices[0]?.message?.content || "AI response missing content.";
-  } catch (error) {
-    console.error("Groq AI Service Error:", error.response?.data || error.message);
+    console.log("MT5 raw response:", response.data);
+
+    if (!Array.isArray(response.data) || !response.data[0]?.generated_text) {
+      console.error("Unexpected MT5 response format:", response.data);
+      return "AI service returned unexpected format.";
+    }
+
+    return response.data[0].generated_text.trim();
+  } catch (err) {
+    console.error("MT5 inference error:", err.response?.data || err.message);
     return "AI service is temporarily unavailable.";
   }
 };
@@ -184,12 +189,16 @@ router.post("/send", async (req, res) => {
     // Extract only relevant text
     let relevantText = extractedText ? findRelevantText(message, extractedText) : "No relevant information found.";
 
-    const aiPrompt = extractedText ? `Document Content: ${relevantText}\n\nUser Query: ${message}` : message;
+    let aiPrompt = message;
+    if (useDocContext && context) {
+         const snippet = findRelevantText(message, context);
+         aiPrompt = `Document Content: ${snippet}\n\nUser Query: ${message}`;
+       }
 
     // Fetch AI Response
         let aiResponse;
         try {
-          aiResponse = await callAIService(aiPrompt);
+          aiResponse = await chatCompletion(aiPrompt);
           console.log("AI Response:", aiResponse);
   } catch (aiError) {
           console.error("AI Service Error:", aiError.message);
