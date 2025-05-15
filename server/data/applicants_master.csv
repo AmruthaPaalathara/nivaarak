@@ -1,5 +1,5 @@
 first_name,last_name,father_name,mother_name,dob,aadhar_number,pan_number,address,email,phone
-Upma,Chaudhuri,Udyati Keer,Ganga Barman,11-05-1956,4441000000000,WCAPU4396T,"75, Ben Road, Jalna-286341",darpanbarman@example.org,3803277900
+Upma,Chaudhuri,Udyati Keer,Ganga Barman,11-05-1956,4.40692E+11,WCAPU4396T,"75, Ben Road, Jalna-286341",darpanbarman@example.org,3803277900
 Advika,Pandya,Neha Raval,Falak Nagarajan,15-08-1994,1.02533E+11,SQRKE7213I,"823, Sachar Zila, Pimpri-Chinchwad 313991",borramugdha@example.org,7565161414
 Zaitra,Dar,Onveer Trivedi,Jyoti Soni,05-02-1952,43016173018,GHZCO1416T,"82, Ramanathan Marg, Nizamabad 930461",groverdaniel@example.com,4042618113
 Tejas,Shroff,Sudiksha Morar,Anjali Narula,25-05-1958,3.34917E+11,MQSRH0731B,"425, Sarin Street, Raichur-661998",vigjanuja@example.org,8447170122
@@ -20,7 +20,7 @@ Odika,Kala,Odika Dubey,Widisha Ravel,06-08-1941,1.98576E+11,FCIWB4172S,"45/479, 
 Nathan,Chacko,Pushti Aggarwal,Chaaya Nadig,15-11-1951,1.96701E+11,VWOMV3153H,"H.No. 041, Ramesh Circle, Ghaziabad-619290",vinayakapur@example.net,2662180880
 Lekha,Prabhu,Jacob Saxena,Yashasvi Tripathi,26-11-1944,4.29182E+11,QRLDK3458D,"H.No. 68, Kari Zila, Tadipatri 560474",nathanya@example.com,8053693079
 Harinakshi,Apte,Nitesh Sehgal,Tarak Kunda,25-04-1953,5.87477E+11,CWAWY2051O,"50, Iyengar Nagar, Berhampur-087264",rohan11@example.net,4643047235
-Yochana,Thaker,Yasti Kohli,Advay Bal,25-08-1984,8.92851E+11,ZOULJ7323P,"47/034, Jhaveri Zila, Meerut 7435   30",sbiswas@example.org,7743535884
+Yochana,Thaker,Yasti Kohli,Advay Bal,25-08-1984,8.92851E+11,ZOULJ7323P,"47/034, Jhaveri Zila, Meerut 743530",sbiswas@example.org,7743535884
 Aachal,Bhardwaj,Aahana Srinivasan,Quincy Kothari,01-12-1936,3.13438E+11,WZGDK2723T,"471, Sidhu Marg, Howrah-584153",goyalmax@example.org,3316789082
 Atharv,Apte,Yatan Ben,Daniel Bassi,28-08-1987,7.10653E+11,RRCZI2067J,"57/496, Dara, Raurkela Industrial Township-705518",wakeeta30@example.net,52496329
 Netra,Kunda,Bahadurjit Rege,Fiyaz Tailor,17-03-1965,58152712834,ZBKQH3337C,"H.No. 14, Mall Zila, Mumbai-299240",nagrawal@example.org,8493733274

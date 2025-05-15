@@ -12,7 +12,6 @@ const router = express.Router();
 const ChatArchive = require("../../models/chatbot/chatArchive.js");
 const { User } = require("../../models/authentication/userSchema.js");
 const redisClient = require("../../config/redisConfig");
-// const { summarize, chatCompletion } = require("../../utils/mt5Client")
 
 //ensuring that the message is not empty or whitespace
 const validateChatMessage = [
@@ -28,15 +27,40 @@ const validateChatMessage = [
 ];
 
 const textCache = new Map();
-
 const summarizeText = async (text) => {
   try {
-    // Directly call our mT5 summarize wrapper
-    const summary = await summarize(text);
-    return summary.trim();
-  } catch (err) {
-    console.error("mT5 Summarization error:", err);
-    return text;  // fallback
+    const cacheKey = `summary-${text.substring(0, 50)}...`;
+    if (textCache.has(cacheKey)) {
+      return textCache.get(cacheKey);
+    }
+
+    const summaryPrompt = `Summarize concisely in one paragraph:\n${text}`;
+    console.log("Summarization prompt:", summaryPrompt);
+
+    const response = await axios.post(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        model: "llama3-8b-8192",
+        messages: [
+          { role: "system", content: "You are a expert summarization assistant" },
+          { role: "user", content: summaryPrompt }
+        ],
+        temperature: 0.3 // More deterministic output
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    const summary = response.data.choices?.[0]?.message?.content?.trim() || text;
+    textCache.set(cacheKey, summary);
+    return summary;
+  } catch (error) {
+    console.error("Summarization error:", error.message);
+    return text; // Fallback to original text
   }
 };
 
@@ -88,7 +112,7 @@ const fetchDocumentContext = async (documentId, userQuery) => {
     // If no matching lines, return a truncated version of the fullText (first 1000 characters)
     return relevantLines || fullText.substring(0, 1000);
   } catch (error) {
-    console.error("Error Application extracting text:", error.message);
+    console.error("Error Applicationextracting text:", error.message);
     return "";
   }
 };
@@ -131,94 +155,101 @@ const extractTextFromDocument = async (doc) => {
   }
 };
 
+
 // Call AI Model
 const callAIModel = async (contextSnippet, userQuery) => {
-  // Build a single concatenated prompt—feel free to tweak this template
-  const aiPrompt = contextSnippet
-      ? `Document Content: ${contextSnippet}\n\nUser Query: ${userQuery}`
-      : userQuery;
+  console.log("AI Model Input - Context:", contextSnippet);
+  console.log("AI Model Input - User Query:", userQuery);
 
-  console.log("mT5 prompt:", aiPrompt);
+  const aiPrompt = `
+   Document Context: ${contextSnippet || "No context available"}
+  
+  Question: "${userQuery}"
+  
+  Provide a concise or list of answer based solely on the above document context. Do not repeat the full context in your answer.Based on the document context above, provide a detailed answer that includes all relevant points. Do not omit any points or relevant thing from mentioned.
+
+  Instructions:
+- Extract and list **ALL** points related to the user query from the document.
+- Do not summarize or omit any details.
+- Provide the answer in a structured format.
+
+Answer:
+`.trim();
+
+  console.log("Constructed AI prompt:", aiPrompt);
 
   try {
-    // chatCompletion uses the `google/mt5-base` under the hood
-    const reply = await chatCompletion(aiPrompt);
-    return reply;
-  } catch (err) {
-    console.error("mT5 chatCompletion error:", err);
-    throw err;
+
+    const response = await axios.post(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        model: "llama3-8b-8192",
+        messages: [
+          { role: "system", content: "You are an intelligent assistant.Answer user queries based solely on the provided document context. Be concise.You are a precise government document analyst." },
+          { role: "user", content: aiPrompt },
+        ],
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        timeout: 30000
+      }
+    );
+
+    console.log("AI API Response:", response.data);
+    return response.data.choices?.[0]?.message?.content || "I'm sorry, I couldn't generate a response.";
+
+  } catch (error) {
+    console.error("AI Model Error:", error.response?.status, error.response?.data || error.message);
+    throw error;
   }
 };
 
 // Process Chat Message
 const handleChatMessage = async (req, res) => {
   try {
-    // Validate input
+    console.log(" Received request body:", req.body);
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ status: "error", message: "Validation failed", errors: errors.array() });
+      return res.status(400).json({ status: "error", message: "Validation failed", errors: errors.array(), });
     }
 
-    // Extract parameters
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ status: "error", message: "Unauthorized: User must be logged in" });
-    }
-    let { message, sessionId, documentId, useDocContext = false } = req.body;
+        // Extract userId from authenticated user session
+        const userId = req.user?.id; // Assuming authentication middleware adds req.user
+        if (!userId) {
+          return res.status(401).json({
+            status: "error",
+            message: "Unauthorized: User must be logged in",
+          });
+        }
+
+    //extracts msg,sessionId,documentId from req.bosy
+    let { message, sessionId, documentId } = req.body;
     sessionId = sessionId || uuidv4();
+    console.log("Using sessionId:", sessionId);
 
-    // Load document context if needed
-    let context = "";
-    if (documentId) {
-      // fetch raw text or summary based on user query
-      context = await fetchDocumentContext(documentId, message);
-    }
 
-    // Build AI prompt
-    let aiPrompt = message;
-    if (useDocContext && context) {
-      const snippet = findRelevantText(message, context);
-      aiPrompt = `Document Content: ${snippet}\n\nUser Query: ${message}`;
-    }
+    // If a document is linked, retrieve its extracted text
+    let contextSnippet = documentId ? await fetchDocumentContext(documentId, message) : "No document attached. Answer generally about government documents.";
+    const aiResponse = await callAIModel(contextSnippet, message);
+    console.log("Saving chat messages:", { message, aiResponse });
 
-    // Call Google mT5 model
-    // Call Google mT5 model
-    let aiResponse;
-    try {
-      if (useDocContext && context) {
-        // Document‐aware prompt
-        aiResponse = await contextualChatCompletion(context, message);
-      } else {
-        // Fallback to generic prompt
-        aiResponse = await chatCompletion(message);
-      }
-    } catch (err) {
-      console.error("mT5 Error:", err);
-      return res.status(500).json({
-        status: "error",
-        message: "AI service unavailable.",
-      });
-    }
-
-    // Persist chat messages
-    const chat = await Chat.findOneAndUpdate(
-        { sessionId },
-        {
-          $setOnInsert: { userId, documentId, createdAt: new Date() },
-          $push: {
-            messages: [
-              { role: "user", content: message },
-              { role: "ai", content: aiResponse }
-            ]
-          }
-        },
-        { upsert: true, new: true }
+    // Save to database
+    let chat = await Chat.findOneAndUpdate(
+      { sessionId },
+      { $push: { messages: [{ role: "user", content: message }, { role: "ai", content: aiResponse }] },
+        $setOnInsert: { documentId, createdAt: new Date() }
+      },
+      { upsert: true, new: true }
     );
 
-    return res.json({ success: true, message: aiResponse, sessionId, documentId });
+    res.json({ success: true, message: aiResponse, sessionId, documentId });
   } catch (error) {
-    console.error("Chat error:", error);
-    return res.status(500).json({ status: "error", message: error.message || "Failed to process message" });
+    console.error("Chat error:", error.message);
+    res.status(500).json({ status: "error", message: error.message || "Failed to process message" });
   }
 };
 
@@ -229,78 +260,95 @@ const findRelevantText = (query, extractedText) => {
   return sentences.find((sentence) => sentence.toLowerCase().includes(cleanedQuery)) || "No relevant information found.";
 };
 
-/**
- * Send a chat message, optionally using document context when useDocContext=true
- */
-async function sendMessage( message, sessionId, documentId, userId, useDocContext = false)
-{
-  // Ensure we have a session
+const sendMessage = async (message, sessionId, documentId, userId) => {
+  // Use provided sessionId or generate a new one using UUID
   const session = sessionId ? String(sessionId) : uuidv4();
-
-  // Must be logged in
-  if (!userId) throw new Error("Unauthorized: User must be logged in");
-
-  // 1) Fetch or restore document & its extracted text
-  let context = "";
-  if (documentId) {
-    let doc = await Document.findOne({ customId: documentId });
-    if (!doc) {
-      const cached = await redisClient.get(`extracted_document:${documentId}`);
-      if (!cached) throw new Error("Document not found in cache or DB");
-      const parsed = JSON.parse(cached);
-      doc = new Document({
-        customId:     documentId,
-        userId,
-        extractedText: parsed.extractedText,
-        status:       "pending",
-      });
-      await doc.save();
-    }
-    context = doc.extractedText || "";
+  console.log(" Received message:", message);
+  console.log(" Session ID:", session);
+  console.log(" Document ID:", documentId || "No document attached");
+  
+  if (!userId) {
+    console.error("Unauthorized: User must be logged in");
+    throw new Error("Unauthorized: User must be logged in");
   }
 
-  // 2) Upsert the Chat session (so it exists before we push)
-  let chat = await Chat.findOne({ userId, sessionId: session });
-  if (!chat) {
-    chat = new Chat({
-      sessionId: session,
-      userId,
-      documentId: documentId ? doc._id : null,
-      messages: [{ role: "user", content: message }],
-    });
-    await chat.save();
-  }
-
-  // 3) Decide whether to build a document‐based prompt
-  let aiPrompt = message;
-  if (useDocContext && context) {
-    const relevantText = findRelevantText(message, context);
-    aiPrompt = `Document Content: ${relevantText}\n\nUser Query: ${message}`;
-  }
-
-  // 4) Call the AI model
-  let aiResponse;
   try {
-    aiResponse = await callAIModel(context, message); // or pass aiPrompt to callAIModel if it accepts custom prompt
-  } catch (err) {
-    console.error("AI Service Error:", err);
-    throw new Error("Failed to get AI response");
+    let context = "";
+    if (documentId) {
+
+      // Fetch the document's extracted text from the cache or database
+      let document = await Document.findOne({ customId: documentId });
+
+      if (!document) {
+        // If the document doesn't exist, create a new record in the document schema
+        const extractedData = await redisClient.get(`extracted_document:${documentId}`);
+        if (extractedData) {
+          document = new Document({
+            customId: documentId,
+            userId,
+            extractedText: JSON.parse(extractedData).extractedText,
+            status: "pending", // Status can be set as pending initially or processed later
+          });
+          await document.save();
+        } else {
+          console.error("No extracted data found for the document ID.");
+          throw new Error("Document not found in cache.");
+        }
+      }
+
+      // Fetch context (extracted text) from the document
+      context = document.extractedText || "";
+      console.log("Extracted Document Context:", context.substring(0, 200)); // Log first 200 chars
+    }
+
+    // Save the chat interaction
+    let chat = await Chat.findOne({ userId, sessionId });
+
+    if (!chat) {
+      chat = new Chat({
+        sessionId,
+        userId,
+        documentId: document ? document._id : null,
+        messages: [{ role: "user", content: message }],
+      });
+      await chat.save();
+    }
+
+    // Extract only relevant text from document if present
+    let relevantText = context ? findRelevantText(message, context) : "No relevant information found.";
+
+    const aiPrompt = context ? `Document Content: ${relevantText}\n\nUser Query: ${message}` : message;
+
+    // Fetch AI Response
+    let aiResponse;
+    try {
+      // If you have the document context (extractedText), you can pass it here
+      const contextSnippet = document.extractedText;  // Assuming you fetched the document's extracted text
+      const userQuery = message;  // The user query (message)
+
+      // Call the AI model with both parameters
+      aiResponse = await callAIModel(contextSnippet, userQuery);
+      console.log("AI Response:", aiResponse);
+    } catch (aiError) {
+      console.error("AI Service Error:", aiError.message);
+      return { error: "Failed to get AI response." };
+    }
+
+
+    // Save the AI's response in the chat log
+    chat.messages.push({ role: "user", content: message });
+    chat.messages.push({ role: "ai", content: aiResponse });
+    await chat.save();
+
+    return { success: true, message: aiResponse, sessionId, chat };
+  } catch (error) {
+    console.error("Chatbot Error:", error.stack || error.message);
+    return { error: "Internal Server Error" };
   }
-
-  // 5) Persist both user & AI messages
-  chat.messages.push({ role: "user", content: message });
-  chat.messages.push({ role: "ai",  content: aiResponse });
-  await chat.save();
-
-  return { success: true, message: aiResponse, sessionId: session, chat };
-}
-
+};
 const archiveChat = async (req, res) => {
   try {
     const { sessionId, userId, documentId } = req.body;
-    if (!sessionId || !userId) {
-      return res.status(400).json({ success: false, message: "Missing sessionId or userId" });
-    }
 
     // Fetch the chat session by sessionId
     const chatSession = await Chat.findOne({ sessionId });
