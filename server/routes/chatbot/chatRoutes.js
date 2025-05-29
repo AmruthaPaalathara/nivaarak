@@ -11,43 +11,42 @@ const Document = require("../../models/chatbot/documentSchema.js");
 const  redisClient   = require("../../config/redisConfig");
 const { findRelevantText } = require("../../controllers/chatbot/chatControllers")
 const { v4: uuidv4 } = require("uuid");
+const { callAIService } = require("../../utils/callAIService");
+const {authenticateJWT} = require("../../middleware/authenticationMiddleware/authMiddleware");
 
-const callAIService = async (userMessage) => {
-  try {
-    console.log("Calling local Groq server with message:", userMessage);
+// at the top of chatRoutes.js
+const jwt = require('jsonwebtoken');
+const { JWT_SECRET } = process.env;   // or wherever you store it
 
-    if (!process.env.GROQ_API_KEY) {
-      console.error("Missing GROQ_API_KEY. AI service cannot function.");
-      return "AI service is temporarily unavailable.";
-    }
-
-    console.log("Calling AI Service with message:", userMessage);
-    console.log("Using API Key:", process.env.GROQ_API_KEY);
-    console.log("Loaded API Key:", process.env.GROQ_API_KEY ? "✅ Exists" : "❌ Missing");
-
-
-    // Simulating AI Call (Replace with actual API call)
-    const response = await axios.post(
-      "https://api.groq.com/openai/v1/chat/completions",
-      {
-        model: "llama3-8b-8192",
-        messages: [{ role: "user", content: userMessage }],
-      },
-      {
-        headers: {
-          "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-      }
-    );
-
-    console.log("AI Response Data:", response.data);
-    return response.data.choices[0]?.message?.content || "AI response missing content.";
-  } catch (error) {
-    console.error("Groq AI Service Error:", error.response?.data || error.message);
-    return "AI service is temporarily unavailable.";
+// custom light‐weight auth for chat routes
+function chatAuth(req, res, next) {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'No token provided' });
   }
-};
+  const token = auth.slice(7);
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    // mirror your authenticateJWT payload shape
+    req.user = {
+      userId: payload.userId,
+      username: payload.username,
+      role: payload.role
+    };
+    return next();
+  } catch (err) {
+    return res.status(403).json({ error: 'Invalid token' });
+  }
+}
+
+
+function detectLanguagePreference(message) {
+  const lower = message.toLowerCase();
+  if (lower.includes("in hindi") || lower.includes("translate in hindi") || lower.includes("hindi mein")) {
+    return "hi";
+  }
+  return "en";
+}
 
 
 /**
@@ -58,55 +57,113 @@ const callAIService = async (userMessage) => {
  */
 
 //start a chat session
-router.post("/start-chat", async (req, res) => {
+router.post('/start-chat', chatAuth, async (req, res) => {
+  // Log as early as possible after auth
+  console.log('👉 /start-chat handler entered');
+  console.log('   req.user:', req.user);
+  console.log('   req.body:', req.body);
+
   try {
-    let { sessionId, userId, documentId, message } = req.body;
+    const userId = req.user.userId || req.user.id;
+    let { sessionId: incomingSession, documentId, message, lang } = req.body;
 
-    if (!message || message.trim() === "") {
-      return res.status(400).json({ error: "Message cannot be empty." });
-    }
-
-    let linkedDocument = null;
-    if (documentId) {
-      // Retrieve the document from the database to get its ObjectId
-      linkedDocument = await Document.findOne({ customId: documentId });
-
-      if (!linkedDocument) {
-        return res.status(404).json({ error: "Document not found." });
-      }
-    }
-
-    if (!sessionId) {
-      sessionId = sessionId || uuidv4();
-    }
-
+    // Validate inputs
     if (!userId) {
-      return res.status(400).json({ error: "User ID is required." });
+      console.log('   ❌ Missing userId');
+      return res.status(400).json({ error: 'Invalid user ID' });
     }
+    if (!message || typeof message !== 'string' || !message.trim()) {
+      console.log('   ❌ Empty message');
+      return res.status(400).json({ error: 'Message cannot be empty.' });
+    }
+    message = message.trim();
 
-    let chatSession = await Chat.findOne({ sessionId });
-    if (!chatSession) {
-      chatSession = new Chat({
-        sessionId,
-        userId: userId,
-        documentId: linkedDocument ? linkedDocument._id : null,
-        status: "active",
-        messages: [{ role: "user", content: message }],
-      });
-    } else {
-      if (documentId && !chatSession.documentId) {
-        chatSession.documentId = linkedDocument._id;
+    // Determine or generate sessionId
+    const sessionId = incomingSession || uuidv4();
+    console.log('   Using sessionId =', sessionId);
+
+    // Attempt to pull and persist document (first question)
+    let docRecord = null;
+    if (documentId) {
+      console.log('   Checking Redis for document:', documentId);
+      const raw = await redisClient.get(`extracted_document:${documentId}`);
+      console.log('   Redis returned:', raw ? 'data' : 'null');
+      if (raw) {
+        const { filename, extractedText, uploadedAt } = JSON.parse(raw);
+        docRecord = await Document.findOneAndUpdate(
+            { customId: documentId },
+            { filename, extractedText, uploadedAt, owner: userId },
+            { upsert: true, new: true }
+        );
+        console.log('   Document upserted to Mongo:', docRecord._id);
+        await redisClient.del(`extracted_document:${documentId}`);
       }
-      chatSession.messages.push({ role: "user", content: message });
     }
 
-    await chatSession.save();
-    res.status(200).json({ success: true, message: "Chat session updated.", chatSession });
+    // Fetch or create chat session
+    let chat = await Chat.findOne({ sessionId, userId });
+    console.log('   Found existing chat:', chat ? chat._id : 'none');
+    if (!chat) {
+      chat = new Chat({ sessionId, userId, documentId: docRecord?._id || null, messages: [] });
+      console.log('   Created new chat record:', chat._id);
+    }
+
+    // Associate document on chat if needed
+    if (docRecord && !chat.documentId) {
+      chat.documentId = docRecord._id;
+      console.log('   Linked document to chat session');
+    }
+
+    // Add user message
+    chat.messages.push({ role: 'user', content: message });
+    console.log('   Messages count before AI call:', chat.messages.length);
+
+    // Build AI prompt
+    const extractedText = docRecord?.extractedText || '';
+    const hasDoc = extractedText.length > 30;
+    let aiPrompt;
+    if (hasDoc) {
+      aiPrompt = `Document content:\n"${extractedText.slice(0, 1000)}"\n\nUser question:\n"${message}"\n\nAnswer in English.`;
+    } else {
+      aiPrompt = `You are an assistant that only answers questions about official Maharashtra government documents.\n` +
+          `Guidelines:\n- Do not mention foreign countries or states outside Maharashtra.\n` +
+          `- Always base answers on official Maharashtra schemes and services.\n` +
+          `- If the question is unclear, ask for clarification.\n\nUser question: ${message}\nAnswer:`;
+    }
+    console.log('   AI prompt built');
+
+    console.log('   Preparing LLM history…');
+    const llmHistory = chat.messages.map(m => ({
+      role: m.role === 'user' ? 'user' : 'assistant',
+      content: m.content
+    }));
+
+    console.log('   Calling callAIService with sanitized history…');
+    const aiResponse = await callAIService({
+      userQuery: message,
+      lang: lang || 'en',
+      docContext: hasDoc ? extractedText : '',
+      history: llmHistory
+    });
+
+    console.log('   Received AI response');
+
+    const cleanAI = typeof aiResponse === 'string' ? aiResponse.trim() : '';
+    if (cleanAI) {
+      chat.messages.push({ role: 'ai', content: cleanAI });
+      console.log('   Appended AI response');
+    }
+
+    await chat.save();
+    console.log('   Chat saved with total messages:', chat.messages.length);
+    return res.json({ success: true, message: cleanAI, sessionId, chat });
+
   } catch (error) {
-    console.error("Error starting chat:", error);
-    res.status(500).json({ error: "Internal server error." });
+    console.error('   ❌ /start-chat ERROR:', error.stack || error.message);
+    return res.status(500).json({ error: 'Internal server error.' });
   }
 });
+
 
 /**
  * @route   POST /api/chat/send
@@ -115,94 +172,102 @@ router.post("/start-chat", async (req, res) => {
  *          (if not already provided) before processing the user's message.
  * @access  Public
  */
-router.post("/send", async (req, res) => {
-  console.log("Received query:", req.body.message);
-  console.log("Checking document association:", req.body.documentId);
 
+router.post('/send', chatAuth, async (req, res) => {
+  console.log("/send route of chatbot hit");
   try {
-    let { message, sessionId, documentId, userId } = req.body;
-    console.log("Received chat request:", req.body);
+    let { message, sessionId, documentId, lang } = req.body;
+    const userId = req.user.userId || req.user.id;
 
-    if (!userId) {
-      return res.status(400).json({ error: "User ID is required." });
+    if (!userId) return res.status(400).json({ error: 'Invalid user ID' });
+    if (!message || typeof message !== 'string' || !message.trim()) {
+      return res.status(400).json({ error: 'Message cannot be empty.' });
     }
+    message = message.trim();
 
-    if (!message) {
-      return res.status(400).json({ error: "Message is required" });
-    }
-
-    if (!message || message.trim() === "") {
-      return res.status(400).json({ error: "Message cannot be empty." });
-    }
-
-    // Ensure sessionId is always a string
-    if (!sessionId) {
-
-      sessionId = sessionId || uuidv4();
-    }
-
+    // Ensure session exists
+    if (!sessionId) sessionId = uuidv4();
     let chat = await Chat.findOne({ userId, sessionId });
-    if (!chat) {
-      let document = documentId ? await Document.findOne({ customId: documentId }) : null;
 
-      if (documentId && !document) {
-        // If the document is not found in the database, fetch from cache and save
+    if (!chat) {
+      console.warn("⚠️ No chat found for sessionId, creating new.");
+      chat = new Chat({ sessionId, userId, documentId: null, messages: [] });
+    }
+
+
+    // Persist document if needed
+    let docRecord = null;
+
+    if (documentId) {
+      docRecord = await Document.findOne({ customId: documentId });
+      if (!docRecord) {
         const extractedData = await redisClient.get(`extracted_document:${documentId}`);
         if (extractedData) {
-          document = new Document({
+          const { filename, extractedText, uploadedAt, fileSize, mimeType } = JSON.parse(extractedData);
+
+          docRecord = new Document({
             customId: documentId,
+            filename,
+            extractedText,
+            uploadedAt,
             userId,
-            extractedText: JSON.parse(extractedData).extractedText,
-            status: "pending", // Customize status
+            metadata: {
+              fileSize: fileSize || 0,
+              mimeType: mimeType || "application/pdf",
+            },
           });
-          await document.save();
-        } else {
-          return res.status(404).json({ error: "Document data not found." });
+          await docRecord.save();
+
+          await redisClient.del(`extracted_document:${documentId}`);
         }
       }
 
-      chat = new Chat({
-        sessionId,
-        userId,
-        documentId: document ? document._id : null,
-        messages: [{ role: "user", content: message }],
-      });
-      await chat.save();
     }
 
-    let extractedText = "";
-    if (documentId) {
-      const document = await Document.findOne({ customId: documentId }, "extractedText");
-      if (document?.extractedText) {
-        extractedText = document.extractedText;
-      } else {
-        console.error("Document not found:", documentId);
-        return res.status(404).json({ error: "Document not found." });
-      }
+    // Initialize chat record
+    if (!chat) {
+      chat = new Chat({ sessionId, userId, documentId: docRecord?._id || null, messages: [] });
+    }
+    chat.messages.push({ role: 'user', content: message });
+
+    // Retrieve extracted text
+    let extractedText = '';
+    if (docRecord || documentId) {
+      const doc = docRecord || await Document.findOne({ customId: documentId });
+      extractedText = doc?.extractedText || '';
     }
 
-    // Extract only relevant text
-    let relevantText = extractedText ? findRelevantText(message, extractedText) : "No relevant information found.";
+    // Build AI prompt
+    let aiPrompt;
+    if (extractedText && extractedText.length > 30) {
+      aiPrompt = `Document content:\n"${extractedText.slice(0, 1000)}"\n\nUser question:\n"${message}"\n\nAnswer in English.`;
+    } else {
+      aiPrompt = `You are an assistant that only answers questions about official Maharashtra government documents.
+Guidelines:
+- Do not mention foreign countries or states outside Maharashtra.
+- Always base answers on official Maharashtra schemes and services.
+- If the question is unclear, ask for clarification.
 
-    const aiPrompt = extractedText ? `Document Content: ${relevantText}\n\nUser Query: ${message}` : message;
+User question: ${message}
 
-    // Fetch AI Response
-        let aiResponse;
-        try {
-          aiResponse = await callAIService(aiPrompt);
-          console.log("AI Response:", aiResponse);
-  } catch (aiError) {
-          console.error("AI Service Error:", aiError.message);
-          return res.status(500).json({ error: "Failed to get AI response." });
-  }
-  console.log("AI Response:", aiResponse);
-    chat.messages.push({ role: "user", content: message });
-    chat.messages.push({ role: "ai", content: aiResponse });
+Answer:`;
+    }
+
+    console.log("🧠 /send: documentId =", documentId);
+    console.log("🧠 /send: sessionId =", sessionId);
+    console.log("🧠 /send: extractedText.length =", extractedText?.length);
+    console.log("🧠 /send: chat.messages =", chat.messages.length);
+
+    // Call AI service
+    const aiResponse = await callAIService({ userQuery: message, lang: lang || 'en', docContext: extractedText, history: chat.messages });
+    const cleanAI = typeof aiResponse === 'string' ? aiResponse.trim() : '';
+    if (cleanAI) chat.messages.push({ role: 'ai', content: cleanAI });
+
     await chat.save();
-    res.json({ success: true, message: aiResponse, sessionId, chat });
+    return res.json({ success: true, message: cleanAI, sessionId, chat });
   } catch (error) {
-    console.error("Chatbot Error:", error.stack || error.message);
-    res.status(500).json({ success: false, error: "Internal Server Error" });
+    console.error('Chatbot Error:', error.stack || error.message);
+    return res.status(500).json({ success: false, error: 'Internal Server Error' });
   }
 });
 
@@ -212,8 +277,6 @@ router.post("/send", async (req, res) => {
  * @access  Public
  */
 router.post("/archive", chatController.archiveChat);
-
-
 
 module.exports = router;
 

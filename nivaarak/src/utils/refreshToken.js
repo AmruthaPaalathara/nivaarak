@@ -1,6 +1,6 @@
 export const refreshToken = async () => {
     try {
-        const response = await fetch("http://localhost:3001/api/auth/refresh", {
+        const response = await fetch("http://localhost:3001/api/auth/refresh-token", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "include",

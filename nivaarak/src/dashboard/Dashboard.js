@@ -12,7 +12,6 @@ import DepartmentApplicationsTable from "./DepartmentApplicationsTable";
 import StatusApplicationsTable from "./StatusApplicationsTable";
 import EmergencyTable from "./AdminEmergencyTable";
 
-
 const Dashboard = () => {
   const [userData, setUserData] = useState(null);
   const [stats, setStats] = useState({ totalSubmitted: 0, emergencyCount: 0 });
@@ -24,6 +23,8 @@ const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("userDashboard");
   const navigate = useNavigate();
   const [role, setRole]           = useState(null);
+  const [userDocs, setUserDocs] = useState([]);
+
 
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
@@ -45,6 +46,8 @@ const Dashboard = () => {
         : "userTable"
     );
   }, [navigate]);
+
+
 
   // 2️⃣  Now fetch data once we know the role:
   useEffect(() => {
@@ -249,7 +252,7 @@ const Dashboard = () => {
                       {activeTab === "department" && <DepartmentApplicationsTable />}
                       {activeTab === "status" && <StatusApplicationsTable />}
                       {activeTab === "adminApplications" && <AdminApplicationsTable />}
-                      {activeTab === "adminApplications" && <EmergencyTable />}
+                      {activeTab === "emergency" && <EmergencyTable />}
                     </>
                 )}
               </Card.Body>

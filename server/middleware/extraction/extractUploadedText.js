@@ -1,19 +1,38 @@
 const { exec } = require("child_process");
 const path = require("path");
+const expectedFields = require("../../utils/documentFieldMap");
 
-const extractText = (filePath) => {
+const extractText = (filePath, documentType) => {
     return new Promise((resolve, reject) => {
-        const script = path.join(__dirname, "../../Applicationextracting/process_uploaded_docs.py");
-        const command = `python "${script}" "${filePath}"`;
+        const scriptPath = path.join(
+            __dirname, "..", "..", "OCR", "Applicationextracting", "process_uploaded_docs.py"
+        );
+
+        const command = `python "${scriptPath}" "${filePath}" auto`;
+        console.log("🔍 Running OCR command:", command);
 
         exec(command, (err, stdout, stderr) => {
             if (err) {
-                return reject(new Error(stderr || err.message));
+                console.error("❌ Text extraction failed:", err);
+                console.error("Python stderr:", stderr);
+                return reject(err);
             }
 
             try {
-                const result = JSON.parse(stdout);
-                resolve(result);
+                const result = JSON.parse(stdout); // should contain { text: '...' }
+                const fullText = result.text || "";
+
+                // ↓ Extract required fields for this document type
+                const wantedFields = expectedFields[documentType] || [];
+                const extractedDetails = {};
+
+                for (const field of wantedFields) {
+                    const match = new RegExp(`${field}\\s*[:\\-]?\\s*(.*)`, "i").exec(fullText);
+                    extractedDetails[field] = match ? match[1].split("\n")[0].trim() : "";
+                }
+
+                resolve({ fullText, extractedDetails });
+
             } catch (parseError) {
                 reject(new Error("Invalid OCR output: " + parseError.message));
             }

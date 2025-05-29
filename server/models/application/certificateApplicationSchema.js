@@ -81,6 +81,10 @@ const certificateApplicationSchema = new mongoose.Schema(
           of: String, // or Object if the structure is complex
           default: {},
       },
+      extractedText: {
+          type: String,
+          default: "",
+      },
     agreementChecked: {
       type: Boolean,
       required: [true, "You must agree to the terms and conditions"],

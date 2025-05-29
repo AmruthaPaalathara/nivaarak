@@ -17,7 +17,18 @@ fields = [
     "pan_number",
     "address",
     "email",
-    "phone"
+    "phone",
+     "salary",
+     "bank_statement",
+     "property_ownership",
+     "caste_proof",
+        "wedding_invitation",
+        "marriage_declaration",
+        "age_proof",
+        "factory_layout",
+        "rent_agreement",
+        "technical_specification"
+
 ]
 
 rows = []
@@ -38,7 +49,19 @@ for _ in range(500):
         ),
         "address": fake.address().replace("\n", ", "),
         "email": fake.email(),
-        "phone": fake.msisdn()[:10]
+        "phone": fake.msisdn()[:10],
+        "salary": fake.random_int(min=10000, max=200000),
+                "bank_statement": f"{fake.random_int(min=1000, max=50000)} INR",
+                "property_ownership": fake.random_element(["Owned", "Rented"]),
+                "caste_proof": fake.random_element(["General", "OBC", "SC", "ST"]),
+                "wedding_invitation": fake.random_element(["Available", "Not Available"]),
+                "marriage_declaration": fake.random_element(["Signed", "Not Signed"]),
+                "age_proof": fake.random_element(["Passport", "Birth Certificate", "Aadhaar"]),
+                "factory_layout": fake.random_element(["Approved", "Pending"]),
+                "rent_agreement": fake.random_element(["Signed", "Not Signed"]),
+                "technical_specification": fake.random_element(["Provided", "Not Provided"])
+            })
+
     })
 
 with open(csv_path, "w", newline="", encoding="utf-8") as f:

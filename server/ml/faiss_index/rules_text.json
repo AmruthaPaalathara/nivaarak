@@ -1,0 +1,19 @@
+{
+  "1000": "Birth Certificate requires: Parent's Identity Proof, Parent's Address Proof, Birth Proof, Parent's Marriage Certificate",
+  "1001": "Death Certificate requires: Death Certificate, Identity Proof, Address Proof",
+  "1002": "Income Certificate requires: Salary Slip, Income Proof, Identity Proof, Address Proof, Bank Statement, Age Proof",
+  "1003": "Domicile Certificate requires: School Leaving Certificate, Identity Proof, Aadhaar Card, Residence Proof",
+  "1004": "Caste Certificate requires: Address Proof, Domicile Proof, Identity Proof, Caste Proof",
+  "1005": "Agricultural Certificate requires: Land Ownership Proof, Identity Proof, Address Proof",
+  "1006": "Non- Creamy Layer requires: Caste Proof, Income Proof, Identity Proof, Address Proof",
+  "1007": "Property Documents requires: Property Ownership Proof, Identity Proof",
+  "1008": "Marriage Certificates requires: Address Proof, Aadhaar Proof, Marriage Declaration, Wedding Invitation Proof",
+  "1009": "Senior Citizen Certificate requires: Aadhaar Card, Age Proof",
+  "1010": "Solvency Certificate requires: Bank Statements, Property Documents",
+  "1011": "Shop and Establishment Registration requires: Rent Agreement, Aadhaar Card, Electricity Bill",
+  "1012": "Contract Labour License requires: Proof of Business, Employer Details, Aadhaar Card",
+  "1013": "Factory Registration Certificate requires: Proof of Ownership, Factory Layout Plan, Aadhaar Card",
+  "1014": "Boiler Registration Certificate requires: Manufacturer Approval, Technical Specification, Aadhaar Card",
+  "1015": "Landless Certificate requires: Revenue Records, Aadhaar Card",
+  "1016": "New Water Connection requires: Proof of Land Ownership, Aadhaar Card"
+}

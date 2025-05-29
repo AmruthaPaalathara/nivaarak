@@ -1,4 +1,4 @@
-// server/utils/ageUtils.js
+
 const { parse, differenceInYears } = require("date-fns");
 
 function calculateAge(dobText) {

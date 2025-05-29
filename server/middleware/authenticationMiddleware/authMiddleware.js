@@ -59,21 +59,37 @@ const authenticateJWT = (roles = []) => async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    console.log("🔍 [middleware] decoded JWT payload:", decoded);
+    console.log("🔍 decoded.userId:", decoded.userId, "typeof:", typeof decoded.userId);
+
     // Log the decoded token for debugging
-    console.log(decoded);
+    console.log("✅ decoded JWT payload:", decoded);
     // Check if decoded.userId is a number
     if (typeof decoded.userId  !== 'number') {
       return res.status(400).json({ success: false, message: 'Invalid user ID format' });
     }
 
+    console.log("🔍 Decoded userId from token:", decoded.userId);
+    console.log("🔍 Type of decoded.userId:", typeof decoded.userId);
+
+    const lookupId = Number(decoded.userId);
+    console.log("🔍 Converted lookupId:", lookupId);
+
+
+
     // Attach full user details (excluding password) to the request
     const user = await User.findOne({ userId: decoded.userId }).select("-password");
+    console.log("⬇️ [middleware] user record from DB:", user);
+    console.log("⬇️   result of DB lookup:", user);
+
     if (!user) {
       console.error("User lookup failed:", decoded.userId);
       return res.status(401).json({ success: false, message: "Unauthorized - User not found" });
     }
 
     req.user = user;
+    console.log("⬇️  user record from DB:", req.user);
     logAuthAttempt(req, true, "Authentication successful");
 
     if (roles.length && !roles.includes(decoded.role)) {

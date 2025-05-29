@@ -20,20 +20,15 @@ const validateLogin = [
   // Validate and sanitize username
   body('username')
     .trim() // Remove leading/trailing whitespace
-    // Sanitize to prevent XSS attacks
     .notEmpty()
-    .withMessage('Username is required')
-    .isLength({ min: 3, max: 20 })
-    .withMessage('Username must be between 3 and 20 characters'),
+    .withMessage('Username is required'),
 
   // Validate and sanitize password
   body('password')
     .trim() // Remove leading/trailing whitespace
      // Sanitize to prevent XSS attacks
     .notEmpty()
-    .withMessage('Password is required')
-    .isLength({ min: 8 })
-    .withMessage('Password must be at least 8 characters long'),
+    .withMessage('Password is required'),
 
   // Handle validation errors
   handleValidationErrors,

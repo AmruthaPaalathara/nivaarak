@@ -11,7 +11,7 @@ const path      = require('path');
 
 function runOcrMode(pdfPath, mode, dpi = '500', threshold = '100', median = '1') {
     return new Promise((resolve, reject) => {
-        const script = path.join(__dirname, '../VerificationExtraction/ocr_text.py');
+        const script = path.join(__dirname, '../OCR/VerificationExtraction/ocr_text.py');
         const py = spawn('python', [ script, pdfPath, mode, dpi, threshold, median ]);
 
         let out = '';

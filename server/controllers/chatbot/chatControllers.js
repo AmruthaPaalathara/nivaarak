@@ -1,9 +1,13 @@
 //importing necessary modules
 const express = require("express");
-require("dotenv").config(); //loads envirinment variable
+require("dotenv").config(); //loads envirinment variable //
 const axios = require("axios"); //axios for calling API
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require('uuid');
+const { execFile } = require("child_process"); //
+const fs = require("fs");
+const path = require("path");
+const pdfParse = require("pdf-parse");
 const { body, validationResult } = require("express-validator");
 const { handleError } = require("../../middleware/errorHandler.js");
 const Document = require("../../models/chatbot/documentSchema.js");
@@ -12,200 +16,183 @@ const router = express.Router();
 const ChatArchive = require("../../models/chatbot/chatArchive.js");
 const { User } = require("../../models/authentication/userSchema.js");
 const redisClient = require("../../config/redisConfig");
+const {callAIService} = require("../../utils/callAIService");
 
 //ensuring that the message is not empty or whitespace
 const validateChatMessage = [
-  body("message").trim().notEmpty().withMessage("Message cannot be empty").custom((value) => {
-    if (!value.replace(/\s/g, "").length) { //prevents msgs that are only spaces.
-      throw new Error("Message cannot be empty or whitespace only.");
-    }
-    return true;
-  }),
-
-  //if document id is provided, checks if it's a valid MongoDB ObjectId, converts it into a ObjectId
-  body("documentId").optional().isMongoId().withMessage("Invalid document ID").customSanitizer((value) => value ? mongoose.Types.ObjectId(value) : null)
+  body("message")
+      .trim()
+      .notEmpty()
+      .withMessage("Message cannot be empty")
+      .custom((value) => {
+        if (!value.replace(/\s/g, "").length) {
+          throw new Error("Message cannot be whitespace only.");
+        }
+        return true;
+      }),
+  body("documentId")
+      .optional()
+      .isString()
+      .withMessage("Invalid document ID"),
 ];
 
+
 const textCache = new Map();
-const summarizeText = async (text) => {
+
+/**
+ * POST /api/documents/extract-text
+ * Check MongoDB → Redis → fallback OCR → persist → return text
+ */
+async function extractText(req, res) {
   try {
-    const cacheKey = `summary-${text.substring(0, 50)}...`;
-    if (textCache.has(cacheKey)) {
-      return textCache.get(cacheKey);
+    const { customId } = req.body;
+    if (!customId) {
+      return res.status(400).json({ success: false, error: "Missing document ID (customId)" });
     }
 
-    const summaryPrompt = `Summarize concisely in one paragraph:\n${text}`;
-    console.log("Summarization prompt:", summaryPrompt);
+    // 1) Try MongoDB
+    let doc = await Document.findOne({ customId }).select("filePath extractedText");
+    if (doc?.extractedText) {
+      return res.json({ success: true, text: doc.extractedText, source: "mongodb" });
+    }
 
-    const response = await axios.post(
-      "https://api.groq.com/openai/v1/chat/completions",
-      {
-        model: "llama3-8b-8192",
-        messages: [
-          { role: "system", content: "You are a expert summarization assistant" },
-          { role: "user", content: summaryPrompt }
-        ],
-        temperature: 0.3 // More deterministic output
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-          "Content-Type": "application/json"
-        }
+    // 2) Try Redis
+    const redisKey = `extracted_document:${customId}`;
+    const cached = await redisClient.get(redisKey);
+    console.log("🧊 Cached Redis entry:", cached);
+    if (cached) {
+      const { extractedText } = JSON.parse(cached);
+      if (extractedText) {
+        return res.json({ success: true, text: extractedText, source: "redis" });
       }
-    );
-
-    const summary = response.data.choices?.[0]?.message?.content?.trim() || text;
-    textCache.set(cacheKey, summary);
-    return summary;
-  } catch (error) {
-    console.error("Summarization error:", error.message);
-    return text; // Fallback to original text
-  }
-};
-
-// Fetch Document Context and validating documentId is a valid objectId
-const fetchDocumentContext = async (documentId, userQuery) => {
-  try {
-    if (!documentId || typeof documentId !== "string") {
-      throw new Error("Invalid document ID");
     }
 
-    const doc = await Document.findOne({ customId: documentId })
-        .select("extractedText userId customId status"); // Include status
-
+    // 3) Fallback OCR
     if (!doc) {
-      throw new Error("Document not found");
+      // If no Mongo record at all, we need at least the filePath
+      return res.status(404).json({ success: false, error: "Document record not found." });
     }
+    const pdfPath = path.resolve(__dirname, "../../", doc.filePath);
+    console.log("⏩ No cached text—running fallback OCR on", pdfPath);
 
-    console.log("Fetched document for context:", doc);
+    const extractedText = await new Promise((resolve, reject) => {
+      execFile(
+          "python",
+          [ path.resolve(__dirname, "../../OCR/process_chatbot_fallback.py"), pdfPath ],
+          (err, stdout, stderr) => {
+            if (err) {
+              console.error("❌ Fallback OCR error:", stderr || err);
+              return reject(err);
+            }
+            resolve(stdout.trim());
+          }
+      );
+    });
+
+    // 4) Persist into Mongo and Redis
+    doc.extractedText = extractedText;
+    await doc.save();
+    await redisClient.set(redisKey, JSON.stringify({ extractedText }), "EX", 3600);
+
+    // 5) Return the new text
+    res.json({ success: true, text: extractedText, source: "ocr-fallback" });
+  } catch (err) {
+    console.error("❌ extractText error:", err);
+    res.status(500).json({ success: false, error: "Internal Server Error during text extraction" });
+  }
+}
+
+
+/**
+ * Run the chatbot-specific OCR fallback script on a PDF
+ * @param {string} pdfPath - Absolute path to the PDF file
+ * @returns {Promise<string>} - Extracted text
+ */
+async function extractForChatbot(pdfPath) {
+  return new Promise((resolve, reject) => {
+    execFile(
+        "python",
+        [path.resolve(__dirname, "../../OCR/process_chatbot_fallback.py"), pdfPath],
+        (err, stdout, stderr) => {
+          if (err) {
+            console.error("Chatbot fallback OCR error:", stderr || err);
+            return reject(err);
+          }
+          resolve(stdout.trim());
+        }
+    );
+  });
+}
+
+
+/**
+ * Fetch and prepare document context (extracted text) for the chatbot
+ * @param {string} documentId
+ * @param {string} userQuery
+ * @returns {Promise<string>} - Relevant snippet or full text
+ */
+async function fetchDocumentContext(documentId, userQuery) {
+  try {
+    if (!documentId) throw new Error("Invalid document ID");
+
+    const doc = await Document.findOne({ customId: documentId }).select(
+        "filePath extractedText status"
+    );
+    if (!doc) throw new Error("Document not found");
+
     let fullText = doc.extractedText || "";
 
-    // If the document is temporary, process it (extract text) and save it permanently
-    if (doc.status === "temporary" && fullText === "") {
-      // Trigger text extraction and saving logic here
-      fullText = await extractTextFromDocument(doc); // Assume this function processes and returns text
+    // If temporary and no text, attempt primary parse + fallback
+    if (doc.status === "temporary" && !fullText) {
+      const pdfPath = path.resolve(__dirname, "../../", doc.filePath);
+      console.log("🔍 Attempting primary PDF-parse for:", pdfPath);
+      try {
+        const dataBuffer = fs.readFileSync(pdfPath);
+        const parsed = await pdfParse(dataBuffer);
+        fullText = parsed.text.trim();
+        console.log("✅ Primary PDF-parse succeeded (length:", fullText.length, ")");
+      } catch (primaryErr) {
+        console.error("❌ Primary PDF-parse failed:", primaryErr.message);
+        console.log("⏩ Falling back to chatbot OCR script...");
+        try {
+          fullText = await extractForChatbot(pdfPath);
+          console.log("✅ Chatbot OCR fallback succeeded (length:", fullText.length, ")");
+        } catch (fallbackErr) {
+          console.error(
+              "❌ Chatbot OCR fallback also failed:",
+              fallbackErr.message
+          );
+          fullText = "";
+        }
+      }
       doc.extractedText = fullText;
-      doc.status = "permanent"; // Change status to permanent
-      await doc.save(); // Save it permanently
+      doc.status = "permanent";
+      await doc.save();
     }
-    
+
+    // If no user query, return snippet
     if (!userQuery || !userQuery.trim()) {
       return fullText.substring(0, 1000);
     }
 
-    //returning the context (the extracted texts)
-    
-    const threshold = 5000;
-
-    // If text is too long and summarizeText function is available, summarize it
-    if (fullText.length > threshold) {
-      console.log("Text length exceeds threshold. Summarizing...");
-      fullText = await summarizeText(fullText);
-    }
-    // Extract relevant content using keyword matching
+    // Filter lines matching query terms
     const lowerQuery = userQuery.toLowerCase();
-    const relevantLines = fullText.split("\n").filter((line) => lowerQuery.split(" ").some((word) => line.toLowerCase().includes(word)))
-      .join("\n");
+    const relevant = fullText
+        .split("\n")
+        .filter((line) =>
+            lowerQuery
+                .split(" ")
+                .some((w) => line.toLowerCase().includes(w))
+        )
+        .join("\n");
 
-    // If no matching lines, use a truncated version of fullText
-    // If no matching lines, return a truncated version of the fullText (first 1000 characters)
-    return relevantLines || fullText.substring(0, 1000);
-  } catch (error) {
-    console.error("Error Applicationextracting text:", error.message);
+    return relevant || fullText.substring(0, 1000);
+  } catch (err) {
+    console.error("Error fetching document context:", err.message);
     return "";
   }
-};
+}
 
-const extractTextFromDocument = async (doc) => {
-  try {
-    if (!doc.filePath) {
-      throw new Error("File path not provided");
-    }
-
-    const fileType = doc.mimeType; // Assuming 'mimeType' field in doc contains the document type
-    let extractedText = "";
-
-    // For PDF files, use a library like pdf-parse
-    if (fileType === "application/pdf") {
-      const pdfParse = require("pdf-parse");
-      const fs = require("fs");
-
-      const buffer = fs.readFileSync(doc.filePath);
-      const pdfData = await pdfParse(buffer);
-      extractedText = pdfData.text;
-
-    }
-    // For Image documents (e.g., scanned PDFs), use an OCR tool like Tesseract.js
-    else if (fileType.startsWith("image/")) {
-      const Tesseract = require("tesseract.js");
-
-      const result = await Tesseract.recognize(doc.filePath, "eng", {
-        logger: (m) => console.log(m), // Optional logger for progress
-      });
-
-      extractedText = result.data.text;
-    }
-    // Add additional logic for other file types if needed
-
-    return extractedText;
-  } catch (error) {
-    console.error("Text extraction failed:", error.message);
-    return "";
-  }
-};
-
-
-// Call AI Model
-const callAIModel = async (contextSnippet, userQuery) => {
-  console.log("AI Model Input - Context:", contextSnippet);
-  console.log("AI Model Input - User Query:", userQuery);
-
-  const aiPrompt = `
-   Document Context: ${contextSnippet || "No context available"}
-  
-  Question: "${userQuery}"
-  
-  Provide a concise or list of answer based solely on the above document context. Do not repeat the full context in your answer.Based on the document context above, provide a detailed answer that includes all relevant points. Do not omit any points or relevant thing from mentioned.
-
-  Instructions:
-- Extract and list **ALL** points related to the user query from the document.
-- Do not summarize or omit any details.
-- Provide the answer in a structured format.
-
-Answer:
-`.trim();
-
-  console.log("Constructed AI prompt:", aiPrompt);
-
-  try {
-
-    const response = await axios.post(
-      "https://api.groq.com/openai/v1/chat/completions",
-      {
-        model: "llama3-8b-8192",
-        messages: [
-          { role: "system", content: "You are an intelligent assistant.Answer user queries based solely on the provided document context. Be concise.You are a precise government document analyst." },
-          { role: "user", content: aiPrompt },
-        ],
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        timeout: 30000
-      }
-    );
-
-    console.log("AI API Response:", response.data);
-    return response.data.choices?.[0]?.message?.content || "I'm sorry, I couldn't generate a response.";
-
-  } catch (error) {
-    console.error("AI Model Error:", error.response?.status, error.response?.data || error.message);
-    throw error;
-  }
-};
 
 // Process Chat Message
 const handleChatMessage = async (req, res) => {
@@ -234,24 +221,48 @@ const handleChatMessage = async (req, res) => {
 
     // If a document is linked, retrieve its extracted text
     let contextSnippet = documentId ? await fetchDocumentContext(documentId, message) : "No document attached. Answer generally about government documents.";
-    const aiResponse = await callAIModel(contextSnippet, message);
+    const aiPrompt = contextSnippet && contextSnippet.length > 30
+        ? `Document Context:\n\n${contextSnippet.slice(0, 1000)}\n\nUser Query: ${message}`
+        : message;
+
+    // ✅ All logs before AI call
+    console.log("📨 Session:", sessionId);
+    console.log("📄 Document found:", !!docRecord); // will be undefined if no document
+    console.log("🧠 Extracted length:", extractedText?.length);
+    console.log("🗂️ History size:", chat?.messages?.length || 0);
+
+    const aiResponse = await callAIService({
+      userQuery: aiPrompt,
+      lang: lang || "en",
+      docContext: extractedText || "",
+      history: previousMessages || [], // if you have this available
+    });
+
+
     console.log("Saving chat messages:", { message, aiResponse });
 
-    // Save to database
-    let chat = await Chat.findOneAndUpdate(
-      { sessionId },
-      { $push: { messages: [{ role: "user", content: message }, { role: "ai", content: aiResponse }] },
-        $setOnInsert: { documentId, createdAt: new Date() }
-      },
-      { upsert: true, new: true }
+    // Save chat
+    await Chat.findOneAndUpdate(
+        { sessionId, userId },
+        {
+          $push: {
+            messages: [
+              { role: "user", content: message },
+              { role: "ai", content: aiResponse },
+            ],
+          },
+          $setOnInsert: { documentId, createdAt: new Date() },
+        },
+        { upsert: true }
     );
 
-    res.json({ success: true, message: aiResponse, sessionId, documentId });
-  } catch (error) {
-    console.error("Chat error:", error.message);
-    res.status(500).json({ status: "error", message: error.message || "Failed to process message" });
+    res.json({ success: true, message: aiResponse, sessionId });
+  } catch (err) {
+    console.error("Chat error:", err.stack || err.message);
+    res.status(500).json({ message: "Internal Server Error" });
   }
 };
+
 
 const findRelevantText = (query, extractedText) => {
   const sentences = extractedText.split(". ");
@@ -416,4 +427,4 @@ const archiveChat = async (req, res) => {
 };
 
 
-module.exports = { handleChatMessage, fetchDocumentContext, callAIModel, sendMessage, archiveChat,  findRelevantText};
+module.exports = { handleChatMessage, fetchDocumentContext, sendMessage, archiveChat,  findRelevantText};

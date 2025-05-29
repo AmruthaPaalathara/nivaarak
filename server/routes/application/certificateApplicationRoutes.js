@@ -12,7 +12,8 @@ const fileCleanUp = require("../../middleware/application/fileCleanUp");
  // Not destructured unless needed
 const validateApplicationForm = require("../../middleware/application/validateApplication");
 const { appUpload, handleUploadErrors } = require("../../middleware/multerConfigs");
-const {authenticateUser} = require("../../middleware/authenticationMiddleware/authMiddleware"); // For file uploads
+const {authenticateJWT } = require("../../middleware/authenticationMiddleware/authMiddleware");
+const {isUser, isAdmin} = require("../../middleware/rbac"); // For file uploads
 
 // In development only: mock middleware
 if (process.env.NODE_ENV === 'development') {
@@ -20,7 +21,7 @@ if (process.env.NODE_ENV === 'development') {
   global.validateApplicationForm = (req, res, next) => next();
 }
 
-router.post("/submit", isAuthenticated, appUpload.any(),// Use upload middleware to handle file uploads
+router.post("/submit",   authenticateJWT(), appUpload.any(),// Use upload middleware to handle file uploads
     handleUploadErrors,  // Handle file upload errors
     fileCleanUp,
     ...validateApplicationForm,  // Spread form validation middleware
@@ -29,11 +30,11 @@ router.post("/submit", isAuthenticated, appUpload.any(),// Use upload middleware
 
 
 router.get("/all-document-types", certificateController.getAllDocumentTypes);
-router.get("/user-documents", isAuthenticated, getUserDocuments);
+router.get("/user-documents", isAuthenticated,   isUser, getUserDocuments);
 router.get("/", isAuthenticated, certificateController.getApplications);
 router.get("/document-types", isAuthenticated, certificateController.getDocumentTypes);
 router.get("/user/:id/status", isAuthenticated, certificateController.getStatusByUserId);
-router.put("/user/:id/status", isAuthenticated, certificateController.updateCertificateStatus);
+router.put("/user/:id/status", isAuthenticated, isAdmin, certificateController.updateCertificateStatus);
 router.get("/user/:id", isAuthenticated, certificateController.getApplicationById);
 router.delete("/user/:id", isAuthenticated, certificateController.deleteCertificate);
 

@@ -8,7 +8,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const cleanupUploads = require("../../middleware/application/fileCleanUp");
-const { extractTextFromPdf } = require("../../Applicationextracting/process_uploaded_docs");
+const { extractTextFromPdf } = require("../../OCR/Applicationextracting/process_uploaded_docs");
 
 // Constants
 const ALLOWED_FILE_TYPES = ["application/pdf"];
@@ -343,8 +343,12 @@ exports.updateCertificateStatus = async (req, res) => {
     if (!ALLOWED_STATUSES.includes(status)) {
       return res.status(400).json({ success: false, error: "Invalid status" });
     }
+    // Fetch the certificate application
+    const application = await Certificate.findById(id);
+    if (!application) {
+      return res.status(404).json({ success: false, message: 'Application not found' });
+    }
 
-    const updateData = { status };
     if (status === "Rejected") {
       if (!rejectionReason || rejectionReason.trim() === "") {
         return res.status(400).json({
@@ -352,36 +356,30 @@ exports.updateCertificateStatus = async (req, res) => {
           error: "Rejection reason is required when status is 'Rejected'",
         });
       }
-      updateData.rejectionReason = rejectionReason;
+      application.rejectionReason = rejectionReason;
     } else {
-      updateData.rejectionReason = undefined; // Clear any existing reason
+      application.rejectionReason = ""; // Clear old reason
     }
 
+    // Update status and statusHistory
+    application.status = status;
+    application.statusHistory.push({
+      status,
+      changedAt: new Date()
+    });
 
-    const updatedCertificate = await Certificate.findOneAndUpdate(
-        { applicant: userId },
-        {
-            ...updateData,
-            $push: {
-                statusHistory: {
-                    status,
-                    changedAt: new Date(),
-                    // changedBy: req.adminId (if tracking admin)
-                }
-            }
-        },
-        { new: true }
-    );
+    await application.save();
 
-    if (!updatedCertificate) {
-      return res.status(404).json({ success: false, error: "Certificate not found" });
-    }
+    return res.json({
+      success: true,
+      message: `Status updated to ${status}`,
+      updatedStatus: application.status,
+      applicationId: id
+    });
 
-    res.status(200).json({ success: true, message: "Status updated", certificate: updatedCertificate });
-  } catch (error) {
-    console.error("Error updating certificate status:", error);
-
-    res.status(500).json({ success: false, error: "Failed to update status" });
+  } catch (err) {
+    console.error('Error updating certificate status:', err);
+    return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 

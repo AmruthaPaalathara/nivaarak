@@ -4,8 +4,12 @@ const { submitPriorityApplication, getAllPriorityApplications, updatePrioritySta
 const {isAdmin} = require('../../middleware/rbac');
 const { authenticateJWT } = require('../../middleware/authenticationMiddleware/authMiddleware');
 
-router.post('/submit', submitPriorityApplication);
-router.get('/all', getAllPriorityApplications);
-router.put('/update-status/:id', authenticateJWT(), isAdmin, updatePriorityStatus);
+// 💥 SMOKE TEST
+router.get('/__test', (req, res) => {
+    return res.json({ ok: true, timestamp: Date.now() });
+});
+
+router.get('/all', authenticateJWT(), isAdmin, getAllPriorityApplications);
+router.put('/update-status/:id', authenticateJWT(),  isAdmin, updatePriorityStatus);
 
 module.exports = router;

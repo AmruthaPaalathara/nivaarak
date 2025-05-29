@@ -1,314 +1,141 @@
-// const PDFDocument = require("pdfkit");
-// const { Readable } = require("stream");
-// const GeneratedPDF = require("../../models/pdfGenerator/generatePdfSchema");
-// const PdfReason = require("../../models/pdfGenerator/generatePdfReasonSchema");
-// const Citizen      = require("../../models/citizenDetails/citizenSchema");
-// const DocumentRule = require("../../models/verification/DocumentRule");
-//
-// // Middleware `fetchLlamaData` must run before this to populate `req.llamaData`.
-// async function generatePDF(req, res) {
-//   console.log("📄 generatePDF called");
-//   const { userId, documentType, rejectionReasons } = req.body;
-//   const llamaData = req.llamaData || {};
-//
-//   if (!userId ) {
-//     return res.status(400).json({ error: "Missing userId" });
-//   }
-//
-//   if ( !documentType ) {
-//     return res.status(400).json({ error: "Missing documentType " });
-//   }
-//
-//   // 1) look up any Citizen info you might need in the PDF:
-//   const citizen = await Citizen.findOne({ userId });
-//   // 2) fetch the DocumentRule so you can build “resubmissionInformation”
-//   const rule = await DocumentRule.findOne({ docType: documentType });
-//   // 3) derive your resubmissionInformation from the rule
-//   const docsList = rule?.requiredDocs?.get('required_documents') || [];
-//
-//
-//   console.log(" Request Body:", req.body);
-//   console.log(" AI Data (llamaData):", llamaData);
-//
-//   if (!llamaData ) {
-//     console.error(" Missing AI data.");
-//     return res.status(400).json({ error: "Missing  AI data" });
-//   }
-//
-//   try {
-//     console.log("🛠 Starting PDF generation for:", documentType);
-//
-//     // 1. Create a PDF in memory
-//     const doc = new PDFDocument();
-//
-//     const buffers = [];
-//     doc.on("data", (chunk) => buffers.push(chunk));
-//     doc.on("end", async () => {
-//       const pdfBuffer = Buffer.concat(buffers);
-//       console.timeEnd("PDF_GENERATION_PROCESS");
-//
-//       const fileName = `${documentType.replace(/\s+/g, "_")}-details.pdf`;
-//
-//       console.log(" Successfully generated PDF for userId:", userId, "and documentType:", documentType.trim().toLowerCase());
-//
-//
-//       // 1) Safely extract your resubmission info
-//       const resub = llamaData.resubmissionInformation || {};
-//
-//       // 2) Normalize the list key (adjust to whatever your AI actually sends)
-//       //    it might be resub.required_documents or resub["Required Documents"]
-//       const docsList =
-//           Array.isArray(resub.required_documents)
-//               ? resub.required_documents
-//               : Array.isArray(resub["Required Documents"])
-//                   ? resub["Required Documents"]
-//                   : [];
-//
-//
-//       // 3) Normalize the timelines object
-//       const timelines = resub.Timelines || {};
-//
-//       // 4) Build lines for Required Documents
-//       const docsText = docsList.length
-//           ? docsList.map((d) => `• ${d}`).join("\n")
-//           : "N/A";
-//
-//       // 5) Build lines for timelines
-//       const period = Array.isArray(timelines["Resubmission period"])
-//           ? timelines["Resubmission period"].join(", ")
-//           : "N/A";
-//       const fee = Array.isArray(timelines["Reapplication fee"])
-//           ? timelines["Reapplication fee"].join(", ")
-//           : "N/A";
-//
-//       //  Format Resubmission Information properly before saving
-//       const formattedResubmission = [
-//         "Required Documents:",
-//         docsText,
-//         "",
-//         "Timelines:",
-//         `Resubmission period: ${period}`,
-//         `Reapplication fee: ${fee}`,
-//       ].join("\n");
-//
-//       console.time("MONGODB_SAVE");
-//
-//       //  Prevent duplicate saves & save in parallel
-//       const pdfRecord = new GeneratedPDF({
-//         userId,
-//         name: fileName,
-//         documentType: documentType.trim().toLowerCase(),
-//         status: "generated",
-//         pdfContent: pdfBuffer.toString("base64"),
-//       });
-//
-//       const pdfReasonRecord = new PdfReason({
-//         userId,
-//         name: fileName,
-//         documentType: documentType.trim().toLowerCase(),
-//         benefits: llamaData.benefits || "Not available",
-//         eligibility: llamaData.eligibility || "Not available",
-//         rejectionReason: llamaData.rejectionReasons || "Not available",
-//         resubmission: formattedResubmission,
-//         status: "generated",
-//       });
-//
-//       await Promise.all([pdfRecord.save(), pdfReasonRecord.save()]);
-//
-//       console.log(" PDF metadata and reason saved successfully.");
-//       console.timeEnd("MONGODB_SAVE");
-//
-//       //  Respond only after successful saving
-//       res.status(200).json({ success: true, message: "PDF generated and saved successfully." });
-//     });
-//
-//     // 2. Generate PDF content
-//     doc.fontSize(20).text(`${documentType}`, { align: "center" }).moveDown();
-//     doc.fontSize(12).text("Introduction:", { underline: true }).text(llamaData.introduction || "N/A").moveDown();
-//     doc.text("Benefits:", { underline: true }).text(llamaData.benefits || "N/A").moveDown();
-//     doc.text("Eligibility:", { underline: true }).text(llamaData.eligibility || "N/A").moveDown();
-//     doc.text("Rejection Reasons:", { underline: true }).text(rejectionReasons.length > 0
-//         ? rejectionReasons.join("\n")
-//         : "N/A").moveDown();
-//     doc.text("Resubmission Information:", { underline: true }).moveDown();
-//
-//     if (llamaData.resubmissionInformation) {
-//       if (Array.isArray(llamaData.resubmissionInformation["Required Documents"])) {
-//         doc.text("Required Documents:", { bold: true }).moveDown();
-//         llamaData.resubmissionInformation["Required Documents"].forEach((docItem) => {
-//           doc.text(`• ${docItem}`, { indent: 20 }).moveDown(); //  Proper bullet points
-//         });
-//       }
-//
-//       if (llamaData.resubmissionInformation.Timelines) {
-//         doc.text("Timelines:", { bold: true }).moveDown();
-//         doc.text(`Resubmission period: ${llamaData.resubmissionInformation.Timelines["Resubmission period"].join(", ")}`, {
-//           indent: 20,
-//         }).moveDown();
-//         doc.text(`Reapplication fee: ${llamaData.resubmissionInformation.Timelines["Reapplication fee"].join(", ")}`, {
-//           indent: 20,
-//         }).moveDown();
-//       }
-//     } else {
-//       doc.text("N/A").moveDown();
-//     }
-//
-//     doc.text("Official Documents:", { underline: true }).text(llamaData.officialDocs?.join(", ") || "N/A").moveDown();
-//     doc.end(); //  Must call this to properly finish
-//
-//   } catch (error) {
-//     console.error(" Unexpected error in PDF generation:", error);
-//     res.status(500).json({ error: "Internal Server Error while generating PDF" });
-//   }
-// };
-//
-// exports.generateRejectionPDF = async (req, res) => {
-//   const { userId, documentType, rejectionReasons } = req.body;
-//
-//   if (!userId)           return res.status(400).json({ error: 'Missing userId' });
-//   if (!documentType)     return res.status(400).json({ error: 'Missing documentType' });
-//   if (!Array.isArray(rejectionReasons))
-//     return res.status(400).json({ error: 'Missing rejectionReasons' });
-//
-//   // (optional) look up any citizen data you want to stamp on the PDF
-//   const citizen = await Citizen.findOne({ userId });
-//   if (!citizen) return res.status(404).json({ error: 'Citizen not found' });
-//
-//   // (optional) rule to build “next steps” or timelines
-//   const rule = await DocumentRule.findOne({ docType: documentType });
-//   const docsList = rule?.requiredDocs?.get('required_documents') || [];
-//
-//   // build your PDF
-//   const doc = new PDFDocument();
-//   const buffers = [];
-//   doc.on('data', chunk => buffers.push(chunk));
-//   doc.on('end', async () => {
-//     const pdfBuffer = Buffer.concat(buffers);
-//     // save to Mongo
-//     const fileName = `${documentType.replace(/\s+/g, '_')}-rejection.pdf`;
-//     await GeneratedPDF.create({
-//       userId,
-//       name: fileName,
-//       documentType,
-//       status: 'rejected',
-//       pdfContent: pdfBuffer.toString('base64'),
-//     });
-//     await PdfReason.create({
-//       userId,
-//       name: fileName,
-//       documentType,
-//       rejectionReason: rejectionReasons.join('\n'),
-//       resubmission: {
-//         required_documents: docsList,
-//         timelines: {
-//           'Resubmission period': ['7 days'],
-//           'Reapplication fee': ['₹50'],
-//         }
-//       },
-//       status: 'generated'
-//     });
-//     res.status(200).json({ success: true, message: 'Rejection PDF generated.' });
-//   });
-//
-//   // fill in PDF
-//   doc.fontSize(18).text(`Application Rejected`, { align: 'center' }).moveDown();
-//   doc.fontSize(12).text(`Dear ${citizen.first_name},`).moveDown();
-//   doc.text(`Your application for "${documentType}" has been rejected for the following reason(s):`).moveDown();
-//   rejectionReasons.forEach(r => doc.text(`• ${r}`));
-//   doc.moveDown();
-//   doc.text(`Next Steps:`, { underline: true }).moveDown();
-//   doc.text(`Please resubmit the following:`);
-//   docsList.forEach(d => doc.text(`• ${d}`));
-//   doc.moveDown();
-//   doc.text(`Resubmission period: 7 days`);
-//   doc.text(`Reapplication fee: ₹50`);
-//   doc.end();
-// };
-//
-// module.exports = { generatePDF };
-
-
+const Certificate = require("../../models/application/certificateApplicationSchema");
 const PDFDocument = require("pdfkit");
+const mongoose = require("mongoose");
 const GeneratedPDF = require("../../models/pdfGenerator/generatePdfSchema");
-const PdfReason   = require("../../models/pdfGenerator/generatePdfReasonSchema");
-const Citizen     = require("../../models/citizenDetails/citizenSchema");
-const DocumentRule= require("../../models/verification/DocumentRule");
-const { generateContent } = require("../../../nivaarak/src/service/geminiServices");
+const PdfReason = require("../../models/pdfGenerator/generatePdfReasonSchema");
+const Citizen = require("../../models/citizenDetails/citizenSchema");
+const DocumentRule = require("../../models/verification/DocumentRule");
 
+// Controller to generate and save a PDF certificate using structured PDF data in req.pdfContent
+async function generatePDF(req, res, next) {
+  console.log("\ud83d\udcc4 generatePDF called");
 
-// Middleware `aiData ` must run before this to populate `req.aiData `.
-async function generatePDF(req, res) {
-  console.log("📄 generatePDF called");
+  const { userId, documentType, rejectionReasons: specificReasons = [] } = req.body;
+  const pdfData = req.pdfContent || {};
 
-  const { userId, documentType, rejectionReasons } = req.body;
-  const aiData = req.geminiData || {};
+  if (!userId || !documentType) {
+    return res.status(400).json({ error: "Missing userId or documentType" });
+  }
 
-  // Look up citizen and rule
-  const citizen = await Citizen.findOne({ userId });
-  const rule    = await DocumentRule.findOne({ docType: documentType });
-  const docsList = rule?.requiredDocs?.get('required_documents') || [];
+  try {
+    const citizen = await Citizen.findOne({ userId });
 
-  // Build PDF
-  // Kick off PDFKit stream…
-  const doc = new PDFDocument();
-  const buffers = [];
-  doc.on("data", c => buffers.push(c));
-  doc.on("end", async () => {
-    // Persist the PDF and the AI‐generated reason object
-    const pdfBuffer = Buffer.concat(buffers);
+    const app = await Certificate.findOne({ userId, documentType });
 
-    const docTypeClean = documentType.trim();
-    const docTypeKey   = docTypeClean.toLowerCase();
+// Convert extractedDetails Map to object
+    const detailsObj = Object.fromEntries(app?.extractedDetails || []);
+    const aiReason = detailsObj.rejectionReason || "No rejection reason provided.";
 
-    // save generated PDF
-    await GeneratedPDF.create({
-      userId,
-      name:           `${docTypeClean.replace(/\s+/g, "_")}.pdf`,
-      documentType:   docTypeClean,  // human‐readable
-      documentTypeKey: docTypeKey,   // machine‐friendly
-      status:       rejectionReasons?.length ? "rejected" : "generated",
-      pdfContent:   pdfBuffer.toString("base64"),
+    const rule = await DocumentRule.findOne({ docType: documentType });
+    const docsList = rule?.requiredDocs?.get("required_documents") || [];
+
+    const cleanType = documentType.trim();
+    const keyType = cleanType.toLowerCase();
+
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    const doc = new PDFDocument();
+    doc.on("error", async (err) => {
+      console.error("PDFKit error:", err);
+      try {
+        await session.abortTransaction();
+      } catch (abortErr) {
+        console.error("Failed to abort transaction:", abortErr);
+      } finally {
+        session.endSession();
+      }
+      res.status(500).json({ success: false, message: "PDF generation failed." });
     });
 
-    // save the LLaMA/Gemini reasons
-    await PdfReason.create({
-      userId,
-      name:            `${documentType.replace(/\s+/g,"_")}-reason.pdf`,
-      documentType:     docTypeClean,
-      documentTypeKey:  docTypeKey,
-      benefits:        aiData.benefits    || ["Not available"],
-      eligibility:     aiData.eligibility || ["Not available"],
-      rejectionReason: Array.isArray(rejectionReasons)
-          ? rejectionReasons.join("\n")
-          : "None",
-      resubmission:    JSON.stringify({ /* … as before … */ }),
-      status:          rejectionReasons?.length ? "rejected" : "generated",
+    const buffers = [];
+    doc.on("data", chunk => buffers.push(chunk));
+    doc.on("end", async () => {
+      try {
+        const pdfBuffer = Buffer.concat(buffers);
+
+        await GeneratedPDF.create([{
+          userId,
+          name: `${cleanType.replace(/\s+/g, "_")}.pdf`,
+          documentType: cleanType,
+          documentTypeKey: keyType,
+          status: specificReasons.length ? "rejected" : "generated",
+          pdfContent: pdfBuffer.toString("base64"),
+        }]);
+
+        await PdfReason.create([{
+          userId,
+          name: `${cleanType.replace(/\s+/g, "_")}-reason.pdf`,
+          documentType: cleanType,
+          documentTypeKey: keyType,
+          benefits: pdfData.benefits || "Not available",
+          eligibility: pdfData.eligibility || "Not available",
+          rejectionReason: specificReasons.length
+              ? specificReasons.join("\n")
+              : pdfData.rejectionReasons || "None",
+          resubmission: JSON.stringify(pdfData.resubmissionInformation || {}),
+          officialDocs: (pdfData.officialDocs || []).join("\n"),
+          status: specificReasons.length ? "rejected" : "generated",
+        }]);
+
+        return res.json({ success: true, message: "PDF generated." });
+      } catch (err) {
+        console.error("Error saving PDF data:", err);
+        res.status(500).json({ success: false, message: "Failed to save PDF." });
+      }
     });
 
-    return res.json({ success: true, message: "PDF generated." });
-  });
+    // Start writing PDF content
+    doc.fontSize(20).text(cleanType, { align: "center" }).moveDown();
 
-  // Write your PDF content
-  doc.fontSize(20).text(documentType, { align: "center" }).moveDown();
+    console.log("\ud83d\udcdc Final PDF Content:", JSON.stringify(pdfData, null, 2));
 
-  // Use aiData.introduction / benefits / eligibility directly:
-  doc.fontSize(12).text("Introduction:", { underline: true })
-      .text(aiData.introduction || "N/A").moveDown();
-  doc.text("Benefits:",     { underline: true })
-      .text(Array.isArray(aiData.benefits)
-          ? aiData.benefits.join("\n")
-          : aiData.benefits || "N/A"
-      ).moveDown();
-  doc.text("Eligibility:",  { underline: true })
-      .text(Array.isArray(aiData.eligibility)
-          ? aiData.eligibility.join("\n")
-          : aiData.eligibility || "N/A"
-      ).moveDown();
+    ["introduction", "benefits", "eligibility"].forEach(key => {
+      doc.fontSize(12)
+          .text(`${key.charAt(0).toUpperCase() + key.slice(1)}:`, { underline: true })
+          .text(pdfData[key] || "N/A")
+          .moveDown();
+    });
 
-  // … rest of your rejection and resubmission logic …
+    // Combine specificReasons + AI-generated rejectionReason
+    const rejectionList = [];
 
-  doc.end();
+    if (specificReasons?.length) {
+      rejectionList.push(...specificReasons);
+    }
+
+    if (aiReason && aiReason !== "No rejection reason provided.") {
+      rejectionList.push(...aiReason.split("\n").map(r => r.trim()).filter(Boolean));
+    }
+
+    if (rejectionList.length > 0) {
+      doc.text("Reason for Rejection:", { underline: true }).moveDown();
+      rejectionList.forEach(r => doc.text(`• ${r}`).moveDown());
+    }
+
+
+    doc.text("Resubmission Information:", { underline: true }).moveDown();
+    Object.entries(pdfData.resubmissionInformation || {}).forEach(([section, items]) => {
+      doc.text(`${section}:`).moveDown();
+      if (Array.isArray(items)) {
+        items.forEach(item => doc.text(`  • ${item}`).moveDown());
+      } else if (typeof items === "object") {
+        Object.entries(items).forEach(([sub, vals]) => {
+          doc.text(`  ${sub}:`).moveDown();
+          const values = Array.isArray(vals) ? vals : [vals];
+          values.forEach(val => doc.text(`    - ${val}`).moveDown());
+        });
+      }
+    });
+
+    doc.text("Official Documents:", { underline: true }).moveDown();
+    (pdfData.officialDocs || []).forEach(d => doc.text(`• ${d}`).moveDown());
+
+    doc.end();
+  } catch (err) {
+    console.error("Unexpected error in generatePDF:", err);
+    return next(err);
+  }
 }
-
 
 module.exports = { generatePDF };

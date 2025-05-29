@@ -1,8 +1,8 @@
 const axios = require('axios');
-
+const API = require("../../nivaarak/src/utils/api")
 async function testPriorityApplication() {
     try {
-        const response = await axios.post('http://localhost:3001/api/priority-applications/submit', {
+        const response = await API.post('/priority-applications/submit', {
             userId: 101,
             certificateType: 'Pension Documents',
             department: "Department of Pension & Pensioners' Welfare",

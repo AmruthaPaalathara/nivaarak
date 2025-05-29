@@ -9,7 +9,7 @@ const { v4: uuidv4, validate: uuidValidate } = require("uuid");
 const redisClient = require("../../config/redisConfig");
 const Document    = require("../../models/chatbot/documentSchema");
 const { User }    = require("../../models/authentication/userSchema");
-const { extractTextWithOCR } = require("../../utils/ocrFallbackExtractor");
+const { extractTextWithOCR } = require("../../utils/chatbotOcrExtractor");
 
 // Enable debug logging for Mongoose
 mongoose.set("debug", true);
@@ -88,6 +88,7 @@ async function uploadDocument(req, res) {
     if (extractedText.length > 20) {
       await redisClient.setex(`extracted_document:${customId}`, 3600, JSON.stringify(tempData));
     }
+    console.log("✅ Redis key set in extractDetails.js:", `extracted_document:${customId}`);
 
     res.json({ success: true, data: { customId, extractedText } });
   } catch (err) {
@@ -95,6 +96,28 @@ async function uploadDocument(req, res) {
     if (filePath) await cleanUpFile(filePath);
     res.status(500).json({ success: false, message: err.message });
   }
+}
+
+async function extractDetails(rawText) {
+  const extractedDetails = new Map();
+
+  // 1. Extract DOB
+  const dobMatch = rawText.match(/\d{2}\/\d{2}\/\d{4}/);
+  extractedDetails.set("dob", dobMatch ? dobMatch[0] : "");
+
+  // 2. Extract Aadhaar
+  const aadharMatch = rawText.match(/\b\d{4} \d{4} \d{4}\b/);
+  extractedDetails.set("aadhar", aadharMatch ? aadharMatch[0] : "");
+
+  // 3. Extract Address
+  const addressKeywords = ["C/O", "Krishna", "Post", "District", "PIN", "Sub District", "PO", "State", "Village", "Street", "House"];
+  const addressLines = rawText
+      .split("\n")
+      .filter(line => addressKeywords.some(k => line.toLowerCase().includes(k.toLowerCase())));
+  const address = addressLines.join(", ").replace(/\s+/g, " ").trim();
+  extractedDetails.set("address", address || "");
+
+  return extractedDetails;
 }
 
 // 2. Extract text endpoint: check MongoDB then Redis
@@ -245,5 +268,6 @@ module.exports = {
   handleChatbotQuery,
   getDocuments,
   getDocumentById,
-  archiveTempDocument
+  archiveTempDocument,
+  extractDetails
 };

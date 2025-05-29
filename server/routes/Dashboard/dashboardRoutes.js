@@ -5,7 +5,7 @@ const { getUserProfile, updateUserProfile, deleteUser } = require("../../control
 const { User } = require("../../models/authentication/userSchema")
 const { authenticateJWT, authenticateSession, } = require("../../middleware/authenticationMiddleware/authMiddleware");
 const { isUser, isAdmin } = require("../../middleware/rbac");
-const { performTextExtraction, getDepartmentApplications } = require("../../controllers/adminDashboard/adminDashboardController");
+
 
 // Dynamic authentication method selector (JWT or Session)
 const authenticate = (req, res, next) => {
@@ -41,8 +41,8 @@ router.get("/profile", authenticateJWT(), (req, res) => {
   }
 });
 
-router.put("/profile", authenticate, isUser, updateUserProfile);
-router.delete("/profile", authenticate, isUser, deleteUser);
+router.put("/profile", authenticateJWT(), isUser, updateUserProfile);
+router.delete("/profile", authenticateJWT(), isUser, deleteUser);
 
 
 module.exports = router;

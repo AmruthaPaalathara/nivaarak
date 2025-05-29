@@ -1,7 +1,6 @@
 
 require("dotenv").config({ path: __dirname + "/.env" });
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -15,21 +14,26 @@ const fs = require("fs");
 mongoose.set("debug", true);
 
 const authRoutes = require("./routes/authentication/authRoutes");
+
 const certificateRoutes = require("./routes/application/certificateApplicationRoutes.js");
 const emailRoutes = require("./routes/application/emailRoutes");
-const generatePdfRoutes = require("./routes/pdfGeneration/generatePdfRoutes.js");
-const chatbotRoutes = require("./routes/chatbot/chatRoutes.js");
-const isAuthenticated = require("./middleware/authenticationMiddleware.js");
 const { getUserDocuments } = require("./controllers/application/dropdownDocumentController");
-const  documentRouter  = require("./routes/chatbot/documentRoute");
 const priorityApplicationRoutes = require('./routes/application/priorityApplicationRoutes');
+
+const generatePdfRoutes = require("./routes/pdfGeneration/generatePdfRoutes.js");
+
+const isAuthenticated = require("./middleware/authenticationMiddleware.js");
+const { adminDashboardLimiter } = require("./middleware/rateLimiting");
+
+const chatbotRoutes = require("./routes/chatbot/chatRoutes.js");
+const  documentRouter  = require("./routes/chatbot/documentRoute");
+
 const userRoutes = require("./routes/Dashboard/dashboardRoutes");
 const chartRoutes = require('./routes/Dashboard/userCharts/chartRoutes');
 const adminRoutes = require("./routes/Dashboard/adminCharts/chartRoutes");
-const eligibilityRoutes = require("./routes/eligibility/eligibilityRoutes");
-const { adminDashboardLimiter } = require("./middleware/rateLimiting");
 const userTableRoutes = require("./routes/Dashboard/userTableRoutes");
-const verifyRoutes = require("./routes/verifyDocument/verifyRoutes")
+
+const translationRouter = require('./routes/translator/translation');
 
 const requiredEnvVars = [
   "JWT_SECRET",
@@ -98,14 +102,15 @@ app.use(`${API_BASE}/chat`, chatbotRoutes);
 app.use(`${API_BASE}/documents`, documentRouter);
 // Then mount it just like others:
 app.use(`${API_BASE}/email`, emailRoutes);
+
 app.use(`${API_BASE}/priority-applications`, priorityApplicationRoutes);
 app.use(`${API_BASE}/users`, userRoutes);
 app.use(`${API_BASE}/userCharts`, chartRoutes);
 app.use(`${API_BASE}/admin-dashboard`,adminDashboardLimiter);
 app.use(`${API_BASE}/admin-dashboard`, adminRoutes);
-app.use(`${API_BASE}/eligibility`, eligibilityRoutes);
 app.use(`${API_BASE}/userTable`, userTableRoutes);
-app.use(`${API_BASE}/verify`, verifyRoutes);
+app.use(`${API_BASE}/translator/translation`, translationRouter);
+
 
 // Connect to MongoDB
 const connectToMongoDB = async (retries = 5) => {

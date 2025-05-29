@@ -6,7 +6,8 @@ const DepartmentMapping = require('../../models/application/departmentMapping');
 const { User } = require("../../models/authentication/userSchema")
 const UserDocument = require("../../models/application/userDocumentSchema");
 
-// Admin: Fetch All Applications
+// Map emergency levels into sort order
+const EMERGENCY_ORDER = { Critical: 1, High: 2, Medium: 3, Low: 4 };
 
 exports.getAllAdminApplications = async (req, res) => {
     try {
@@ -23,13 +24,15 @@ exports.getAllAdminApplications = async (req, res) => {
                 email: 1,                    // <<–– make sure you project the saved email
             }
         )
-            .populate({
-                path: "applicant",
-                model: "User",
-                select: "username",
-                match: { userId: { $exists: true } },
-                foreignField: "userId"
-            })
+            // .populate({
+            //     path: "applicant",
+            //     model: "User",
+            //     localField: "applicant",
+            //     select: "username",
+            //     match: { userId: { $exists: true } },
+            //     foreignField: "userId"
+            // })
+            // .populate("applicant", "first_name last_name") // get live names
             .sort({ emergencyLevel: 1, requiredBy: 1, createdAt: -1 })
             .lean();
 
@@ -39,9 +42,10 @@ exports.getAllAdminApplications = async (req, res) => {
 
         // 2) Build a lookup map from your UserDocument collection by the string field
         const types = [...new Set(applications.map(app => app.documentType))];
-        const docs  = await UserDocument.find({
-            documentType: { $in: types }
-        })
+        const docs  = await UserDocument.find(
+            { documentType: { $in: types } },
+            { documentType: 1 }
+        )
             .select("documentType")
             .lean();
 
@@ -52,12 +56,29 @@ exports.getAllAdminApplications = async (req, res) => {
 
         // 3) Attach `documentTypeName` to each app
         applications = applications.map(app => ({
-            ...app,
-            documentTypeName: docMap[app.documentType] || app.documentType || "Unknown"
+            // ...app,
+            _id:                app._id,
+            applicantName:    `${app.firstName} ${app.lastName}`,
+            email:              app.email,
+            documentType:       app.documentType,
+            documentTypeName:   docMap[app.documentType] || app.documentType || "Unknown",
+            emergencyLevel:     app.emergencyLevel,
+            requiredBy:         app.requiredBy,
+            status:             app.status,
         }));
 
-        return res.status(200).json({ success: true, applications });
+        // 4) Sort by emergencyLevel then by requiredBy date
+        applications.sort((a, b) => {
+            const ea = EMERGENCY_ORDER[a.emergencyLevel] || 99;
+            const eb = EMERGENCY_ORDER[b.emergencyLevel] || 99;
+            if (ea !== eb) return ea - eb;
 
+            const da = a.requiredBy ? new Date(a.requiredBy) : new Date(8640000000000000);
+            const db = b.requiredBy ? new Date(b.requiredBy) : new Date(8640000000000000);
+            return da - db;
+        });
+
+        return res.status(200).json({ success: true, applications, total: applications.length});
     } catch (error) {
         console.error("Error fetching all admin applications:", error);
         return res.status(500).json({ success: false, message: "Failed to fetch data" });
@@ -122,43 +143,6 @@ exports.performTextExtraction = async (req, res) => {
     }
 };
 
-exports.getAllAdminApplications = async (req, res) => {
-    try {
-        // 1) Fetch and populate applicant username
-        let applications = await Certificate.find()
-            .populate({
-                path: "applicant",
-                model: "User",
-                select: "username",
-                match: { userId: { $exists: true } },
-                foreignField: "userId"
-            })
-            .sort({ emergencyLevel: 1, requiredBy: 1, createdAt: -1 })
-            .lean();
-
-        if (!applications.length) {
-            return res.status(404).json({ message: 'No applications found.' });
-        }
-
-        // 2) Build a lookup for human-readable documentType names
-        const types = [...new Set(applications.map(app => app.documentType))];
-        const docs  = await UserDocument.find({ documentType: { $in: types } })
-            .select("documentType")
-            .lean();
-        const docMap = docs.reduce((m, d) => { m[d.documentType] = d.documentType; return m; }, {});
-
-        // 3) Attach the documentTypeName to each application
-        applications = applications.map(app => ({
-            ...app,
-            documentTypeName: docMap[app.documentType] || "Unknown"
-        }));
-
-        return res.status(200).json({ success: true, applications });
-    } catch (error) {
-        console.error('Error fetching all admin applications:', error);
-        return res.status(500).json({ success: false, message: 'Failed to fetch data' });
-    }
-};
 
 // ─── A) List of Departments ────────────────────────────────────────────────────
 exports.getAllDepartments = async (req, res) => {
@@ -300,3 +284,36 @@ exports.getStatusApplications = async (req, res) => {
         return res.status(500).json({ error: "Failed to fetch data" });
     }
 };
+
+exports.checkApplication = async (req, res) => {
+    try {
+        const app = await Certificate.findById(req.params.id);
+        if (!app) return res.status(404).json({ error: 'Application not found' });
+
+        const extractedText = app.extractedDetails?.rawText;
+        if (!extractedText || extractedText.length < 100) {
+            return res.status(400).json({ error: 'Insufficient extracted text for AI verification' });
+        }
+
+        const documentType = app.documentType || "document";
+        const userQuery = `Check if the user is eligible for a ${documentType} based on the uploaded document.`;
+
+        const { data: ragResult } = await axios.post("http://localhost:3001/api/admin-dashboard/rag/verify-context", {
+            userQuery,
+        });
+
+        const aiResponse = ragResult.aiResponse || "";
+        const eligible = aiResponse.toLowerCase().startsWith("yes");
+
+        return res.json({
+            eligible,
+            mismatchReasons: eligible ? [] : [aiResponse],
+            confidence: ragResult.similarityScore,
+        });
+
+    } catch (err) {
+        console.error("checkApplication error:", err);
+        return res.status(500).json({ error: "Server error during eligibility check" });
+    }
+};
+

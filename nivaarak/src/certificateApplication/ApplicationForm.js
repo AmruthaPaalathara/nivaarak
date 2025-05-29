@@ -4,9 +4,9 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "../css/style.css";
-import axios from 'axios';
+import { fetchDocumentTypes } from "../service/documentService";
 import API from "../../src/utils/api";
-import { fetchUserDocuments } from "../api/documentService";
+
 
 const ApplicationForm = () => {
   const navigate = useNavigate();
@@ -201,7 +201,11 @@ const ApplicationForm = () => {
 
       console.log("About to send payload:", formData);
 
-      const applyResponse = await API.post("/certificates/submit", formDataToSend);
+      const applyResponse = await API.post(
+          "/certificates/submit",
+          formDataToSend,
+          { headers: { Authorization: `Bearer ${token}` } }
+      );
       console.log("apply response:", applyResponse);
 
       if (applyResponse.data.success) {
@@ -227,24 +231,18 @@ const ApplicationForm = () => {
       }
 
     } catch (err) {
-    const resp = err.response;
-    // If the server returned a validation-errors array
-    if (resp?.status === 400 && Array.isArray(resp.data?.errors)) {
-      console.error("Validation errors:", resp.data.errors);
-      // Show each validation message in an alert
-      alert(resp.data.errors.map(e => e.msg).join("\n"));
-    } else {
-      // Fallback for other errors
-      console.error("Unexpected error during submit or PDF/Email:", {
-        status: resp?.status,
-        data:   resp?.data,
-        err
-      });
-      alert(`Server error (${resp?.status}): ${JSON.stringify(resp?.data)}`);
+      const { response } = err;
+      console.error("Submit failed:", err.message, response?.status, response?.data);
+      if (response?.status === 401) {
+        alert("You must be logged in to submit an application.");
+      } else if (response?.status === 400 && Array.isArray(response.data.errors)) {
+        alert(response.data.errors.map(e => e.msg).join("\n"));
+      } else {
+        alert(`Server error (${response?.status}): ${JSON.stringify(response?.data)}`);
+      }
+    } finally {
+      setIsSubmitting(false);
     }
-  }finally {
-    setIsSubmitting(false);
-  }
 };
 
   const handlePreview = () => {
@@ -280,38 +278,11 @@ const ApplicationForm = () => {
   };
 
   useEffect(() => {
-    const getDocumentTypes = async () => {
-      const result = await fetchUserDocuments();
-
-      if (result.success && result.types.length > 0) {
-        setDocumentTypes(result.types);
-
-      } else {
-
-        setDocumentTypes([
-          "Birth Certificate",
-          "Death Certificate",
-          "Income Certificate",
-          "Domicile Certificate",
-          "Caste Certificate",
-          "Agricultural Certificate",
-          "Non- Creamy Layer",
-          "Property Documents",
-          "Marriage Certificates",
-          "Senior Citizen Certificate",
-          "Solvency Certificate",
-          "Shop and Establishment Registration",
-          "Contract Labour License",
-          "Factory Registration Certificate",
-          "Boiler Registration Certificate",
-          "Landless Certificate",
-          "New Water Connection"
-        ]);
-      }
-    };
-
-    getDocumentTypes();
+    fetchDocumentTypes().then(typesArray => {
+      setDocumentTypes(typesArray);
+    });
   }, []);
+
 
   useEffect(() => {
     const {firstName, lastName, email, phone, state, documentType, agreementChecked} = formData;

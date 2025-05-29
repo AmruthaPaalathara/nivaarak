@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { FloatingLabel, Form, Button, Container, Row, Col, Spinner, Alert, ProgressBar } from "react-bootstrap";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+
 import "../css/style.css";
 import zxcvbn from "zxcvbn"; // For password strength calculation
 import API from "../../src/utils/api";

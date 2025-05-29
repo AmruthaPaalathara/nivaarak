@@ -1,8 +1,8 @@
 const axios = require('axios');
-
+const API = require("../../nivaarak/src/utils/api")
 async function getAllPriorityApplications() {
     try {
-        const res = await axios.get('http://localhost:3001/api/priority-applications/all');
+        const res = await API.get('/priority-applications/all');
         console.log('📋 All Priority Applications:');
         res.data.data.forEach((app, i) => {
             console.log(`\n#${i + 1} - ${app.certificateType}`);

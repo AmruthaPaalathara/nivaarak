@@ -1,16 +1,17 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Container, Row, Col, Card, ListGroup, Spinner, Badge, ProgressBar, Button, OverlayTrigger, Tooltip  } from "react-bootstrap";
-import { useSpeechRecognition } from 'react-speech-recognition';
+import { Container, Row, Col, Card, ListGroup, Spinner, Badge, ProgressBar, Button, OverlayTrigger, Tooltip, ButtonGroup   } from "react-bootstrap";
+import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import { FaMicrophone, FaMicrophoneSlash, FaVolumeUp } from "react-icons/fa";
 import FileUpload from "./FileUpload.js";
 import MessageInput from "./MessageInput.js";
-import axios from "axios";
 import { toast } from "react-toastify";
 import { v4 as uuidv4 } from "uuid";
+import 'regenerator-runtime/runtime';
 import "../../css/style.css";
-import SpeechRecognition from "react-speech-recognition";
+import { franc } from "franc";
 import axiosInstance from "../../utils/api";
 import API from "../../utils/api"; // Import the pre-configured axios instance
+import { archiveChatSession } from "../../utils/chatUtils";
 
 console.log("API URL:", process.env.REACT_APP_API_URL);
 console.log(" ChatWithUpload component is rendering...");
@@ -47,140 +48,193 @@ const fetchDocumentTextFromAPI = async (documentId) => {
   }
 };
 
-function shouldUseDocumentContext(message, documentId) {
-  return Boolean(documentId && PRONOUN_REGEX.test(message));
-}
-
+const mapFrancToLangCode = (francCode) => {
+  switch (francCode) {
+    case "hin": return "hi-IN";
+    case "mar": return "mr-IN";
+    case "eng": return "en-US";
+    default: return "en-US";
+  }
+};
 
 // API function to send a message
 const ChatWithUpload = ({ currentSessionId , onUploadSuccess = () => {} }) => {
   const [message, setMessage] = useState(""); //current input
+  const messagesEndRef = useRef(null);
+  const [messages, setMessages] = useState([]); //chat history
   const [uploadedFile, setUploadedFile] = useState(null); // File metadata
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [isRecording, setIsRecording] = useState(false);
-  const messagesEndRef = useRef(null);
-  // const token = localStorage.getItem("token");
-  const [sessionId, setSessionId] = useState(null);
-  const [messages, setMessages] = useState([]); //chat history
-  const [isSending, setIsSending] = useState(false);
+  const [sessionId, setSessionId] = useState(() => uuidv4());
   const [error, setError] = useState(null);
   const [voiceLang, setVoiceLang] = useState("en-US");
+  const [isRecording, setIsRecording] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const {
+    transcript,
+    listening,
+    resetTranscript,
+    browserSupportsSpeechRecognition,
+  } = useSpeechRecognition();
+
+  const [hasWarnedAboutExtraction, setHasWarnedAboutExtraction] = useState(false);
+  const [archiveNotified, setArchiveNotified] = useState(false);
+  const [isSpeechSupported, setIsSpeechSupported] = useState(true);
+  const [sessionInitialized, setSessionInitialized] = useState(false);
+  const [documentId, setDocumentId] = useState(null);
+
+
+  useEffect(() => {
+    if (!SpeechRecognition.browserSupportsSpeechRecognition()) {
+      toast.error("Speech recognition is not supported in this browser.");
+      setIsSpeechSupported(false);
+    }
+  }, []);
+
+
+
+  useEffect(() => {
+    if (!isRecording && transcript) {
+      setMessage(transcript.trim());
+      resetTranscript();
+    }
+  }, [isRecording, transcript]);
+
+  const handleVoiceInput = () => {
+    if (!browserSupportsSpeechRecognition) {
+      toast.error("Speech recognition is not supported in this browser.");
+      return;
+    }
+
+    if (listening) {
+      SpeechRecognition.stopListening();
+      setIsRecording(false);
+    } else {
+      const sampleText = message || messages[messages.length - 1]?.content || "";
+      const langCode = franc(sampleText, { minLength: 3 });
+      const voiceCode = mapFrancToLangCode(langCode);
+      setVoiceLang(voiceCode);
+
+      SpeechRecognition.startListening({ continuous: true, language: voiceCode });
+      setIsRecording(true);
+    }
+  };
+
+
+  const handlePlayAudio = async (text) => {
+        try {
+            const resp = await axiosInstance.post(
+                  "/tts",
+                  { text, lang: voiceLang },
+                  { responseType: "blob" }
+                );
+
+                const url = URL.createObjectURL(
+                  new Blob([resp.data], { type: "audio/mpeg" })
+                );
+            const audio = new Audio(url);
+            audio.play();
+          } catch (err) {
+            console.error("TTS fetch/play error:", err);
+            toast.error("Could not play speech.");
+          }
+     };
+
+  const handleTranslateAndPlay = async (text, targetLang) => {
+    try {
+      const resp = await axiosInstance.post(
+          "/translator/translation",
+          { text, targetLang },
+          { responseType: "blob" }
+      );
+      const url = URL.createObjectURL(
+          new Blob([resp.data], { type: "audio/mpeg" })
+      );
+      new Audio(url).play();
+    } catch (err) {
+      console.error("Translate-TTS error:", err);
+      toast.error("Could not play translated speech.");
+    }
+  };
+
+
+  function shouldUseDocumentContext(message, documentId) {
+    return Boolean(documentId && PRONOUN_REGEX.test(message));
+  }
+
+  const handleClearChat = () => {
+    setMessages([]);
+    toast.info("Chat cleared, document retained.");
+  };
+
+  const handleNewChat = () => {
+    const retainDoc = window.confirm("Do you want to keep the uploaded document?");
+    setMessages([]);
+    setSessionId(uuidv4());
+    if (!retainDoc) setUploadedFile(null);
+    toast.success("Started a new chat session.");
+  };
+
+
+  // NEW: streamChatResponse that hits /chat/send exactly once
+  const streamChatResponse = async (
+      prompt,
+      documentId,
+      sessionId,
+      lang = "en",
+      client = API
+  ) => {
+    if (typeof prompt !== "string" || !prompt.trim()) {
+      toast.error("Invalid message prompt.");
+      return;
+    }
+
+    try {
+      setMessages(prev => [...prev, { role: 'ai-typing', content: "" }]);
+
+      const { data } = await client.post("/chat/send", {
+        sessionId: sessionId || localStorage.getItem("sessionId"),
+        documentId: documentId || localStorage.getItem("documentId"),
+        message: prompt,
+        lang
+      });
+
+      const fullResponse = data.message || "No response.";
+      let currentText = "";
+
+      for (let ch of fullResponse) {
+        currentText += ch;
+        setMessages(prev =>
+            prev.map(msg =>
+                msg.role === "ai-typing" ? { ...msg, content: currentText } : msg
+            )
+        );
+        await new Promise(r => setTimeout(r, 25));
+      }
+
+      setMessages(prev =>
+          prev.map(msg =>
+              msg.role === "ai-typing" ? { ...msg, role: "assistant" } : msg
+          )
+      );
+    } catch (err) {
+      const errMsg = err.response?.data?.error || "AI failed to respond.";
+      setMessages(prev => [
+        ...prev,
+        { role: "assistant", content: errMsg }
+      ]);
+    }
+  };
 
   const handleRemove = () => {
     setUploadedFile(null);
     setUploadProgress(0);
+    setDocumentId(null);
+    setSessionId(null);
+    setMessages([]); // Optional: clear chat history
+    toast.info("Document removed. You can upload a new one.");
   };
 
-
-
-  const {
-    transcript, // The transcribed speech text
-    resetTranscript, // To reset the transcript
-    listening, // Boolean indicating if speech recognition is active
-  } = useSpeechRecognition();
-
-  // Send the transcript (recognized text) to your chat message handler
-  useEffect(() => {
-    if (!isRecording && transcript) {
-      setMessage(transcript.trim());
-      resetTranscript(); // Optionally reset the transcript for the next recording
-    }
-  }, [isRecording, transcript]);
-
-  // Handle the start/stop of speech input
-  function handleVoiceInput() {
-    if (isRecording) {
-      SpeechRecognition.stopListening();
-      setIsRecording(false);
-    } else {
-      setIsRecording(true);
-      SpeechRecognition.startListening({ continuous: true, language: voiceLang });
-    }
-  }
-
-  function handlePlayAudio(text) {
-    const speech = new SpeechSynthesisUtterance(text);
-    speech.lang = voiceLang;
-    speech.rate = 1.0;
-    speechSynthesis.speak(speech);
-  }
-
-  const sendMessage = async (message, sessionId, setSessionId, messages, setMessages, documentId, extractedText, useDocContext  = false) => {
-
-    if (!message.trim()) {
-      toast.error("Message cannot be empty.");
-      return;
-  }
-  
-  const userId = localStorage.getItem("userId");
-  console.log("UserId from localStorage:", userId);
-
-  if (!userId) {
-      toast.error("User ID missing. Please log in again.");
-      return;
-  }
-
-    let session = sessionId;
-    if (!sessionId) {
-      session = uuidv4();
-      setSessionId(session);
-    }
-    // Generate UUID if no sessionId
-    try {
-      let context = extractedText || "";
-      if (!context && documentId) {
-        try {
-          // Fetch document text only if extractedText is not provided
-          context = await fetchDocumentTextFromAPI(documentId);
-        } catch (docError) {
-          console.warn("Failed to fetch document text:", docError.message);
-        }
-      }
-  
-      const chatHistory = messages ? messages.map((msg) => ({
-        role: msg.role, 
-        content: msg.content,
-      })) : [];    
-  
-      // Build the payload including the context
-      const payload = {
-        userId,
-        message,
-        sessionId: session,
-        documentId: documentId || null,
-        useDocContext,
-        context, // Updated extracted text
-        chatHistory, // Include chat history for AI context
-      };
-      console.log("Payload being sent:", payload);
-
-      setMessages((prevMessages) => {
-        if (prevMessages.length > 0 && prevMessages[prevMessages.length - 1].content === message) {
-          return prevMessages; // Prevent duplicate messages
-        }
-        return [...prevMessages, { role: "user", content: message, timestamp: new Date() }];
-      });
-      console.log("Payload being sent to AI:", payload);
-
-        const response = await axiosInstance.post("/chat/send", payload);
-
-        const data = response.data;
-      console.log("AI response:", data); // for debug
-        // handle the data as needed
-
-        setMessages((prevMessages) => [
-          ...prevMessages,
-          { role: "ai", content: data.message, timestamp: new Date() }
-        ]);
-        return data;
-      } catch (error) {
-        console.error("Error sending message:", error.message);
-        setError("Failed to get AI response.");
-        toast.error("Failed to send message. Please try again.");
-        throw error;
-      }
-    };
 
   useEffect(() => {
     console.log("Document ID updated:", uploadedFile?.documentId);
@@ -192,7 +246,7 @@ const ChatWithUpload = ({ currentSessionId , onUploadSuccess = () => {} }) => {
       if (messagesEndRef.current) {
         messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
       }
-    }, 100); // Small delay helps prevent excessive auto-scrolling
+    }, 30); // Small delay helps prevent excessive auto-scrolling
 
     return () => clearTimeout(timeout);
   }, [messages]);
@@ -277,23 +331,15 @@ const ChatWithUpload = ({ currentSessionId , onUploadSuccess = () => {} }) => {
           console.log("Upload success:", response.data);
           setUploadedFile({
             name: response.data.data.file?.originalname || "Unknown file",
-            documentId: customId,
+            documentId: response.data.data.customId, // Must not be undefined
             extractedText: response.data.data.extractedText || "",
+            summary: response.data.data.summary || "No summary generated."
           });
           toast.success("File uploaded successfully!");
+          console.log("Document ID set in uploadedFile:", response.data.data.customId);
 
          if (typeof onUploadSuccess === "function") {
             onUploadSuccess(response.data);
-          }
-
-          try {
-            const extractedText = await fetchDocumentTextFromAPI(customId);
-            if (extractedText) {
-              console.log("Text extracted successfully:", extractedText);
-            }
-          } catch (fetchError) {
-            console.error("Error fetching document text:", fetchError);
-            toast.error("Could not extract text from document.");
           }
 
         } else {
@@ -309,153 +355,80 @@ const ChatWithUpload = ({ currentSessionId , onUploadSuccess = () => {} }) => {
     };
 
   const handleSendMessage = async (e) => {
-    if (isSending) return; // Prevent duplicate messages
-    setIsSending(true); // Indicate sending has started
-
-    if (e && e.preventDefault) {
-      e.preventDefault();
-    }
+    e.preventDefault();
+    if (isSending) return;
+    setIsSending(true);
 
     try {
-      if (!message.trim()) {
+      const currentMessage = message.trim();
+      if (!currentMessage) {
         toast.error("Message cannot be empty.");
         return;
       }
 
-      console.log("handleSendMessage triggered");
-      console.log("Message:", message);
-      console.log("Before sending, documentId:", uploadedFile?.documentId);
-      console.log("Sending message to backend:", { message, documentId: uploadedFile?.documentId || "No document attached" });
-
-      const currentMessage = message;
+      // 1️⃣ Echo user
+      setMessages(prev => [
+        ...prev,
+        { role: "user", content: currentMessage, timestamp: new Date() }
+      ]);
       setMessage("");
 
-      //  New code: Archive uploaded document before sending message
-      if (uploadedFile && uploadedFile.documentId && !uploadedFile.isArchived) {
-        try {
-          console.log("Archiving uploaded document...");
-          const accessToken = localStorage.getItem("accessToken");
+      // 2️⃣ First message → start-chat
+      if (!sessionInitialized) {
+        const res = await API.post("/chat/start-chat", {
+          userId: localStorage.getItem("userId"),
+          sessionId,
+          documentId: uploadedFile?.documentId || null,
+          message: currentMessage,
+          lang: "en"
+        });
 
-          await axiosInstance.post("/documents/archive-temp", {
-            customId: uploadedFile.documentId,
-            userId: localStorage.getItem("userId"),
-          }, {
-            headers: {
-              "Authorization": `Bearer ${accessToken}`,
-            },
-          });
+        setSessionId(res.data.sessionId);
+        setDocumentId(res.data.chat?.documentId || uploadedFile?.documentId || "");
+        setSessionInitialized(true);
 
-          console.log("Document archived successfully!");
+        // display the AI reply from start-chat
+        setMessages(prev => [
+          ...prev,
+          { role: "ai", content: res.data.message, timestamp: new Date() }
+        ]);
 
-          // Update the uploadedFile state to mark it as archived
-          setUploadedFile((prev) => ({ ...prev, isArchived: true }));
-
-        } catch (archiveError) {
-          console.error("Failed to archive document:", archiveError);
-          toast.error("Failed to archive document.");
-        }
+      } else {
+        // 3️⃣ Subsequent messages → send & stream
+        await streamChatResponse(
+            currentMessage,
+            uploadedFile?.documentId || "",
+            sessionId,
+            "en",
+            API
+        );
       }
 
-      // Add user message to chat
-      const userMessage = { role: "user", content: currentMessage, timestamp: new Date() };
-      setMessages((prevMessages) => [...prevMessages, userMessage]);
+      console.log("Uploaded file state before chat start:", uploadedFile);
+      console.log("DocumentId being sent:", uploadedFile?.documentId);
 
-      if (!uploadedFile || !uploadedFile.documentId || !uploadedFile.extractedText) {
-        toast.warning("Please upload a valid document and wait for processing.");
-        return;
-      }
-
-      console.log("uploadedFile.documentId:", uploadedFile?.documentId ?? "No document available");
-
-      let extractedText = uploadedFile?.extractedText || "";
-      if (!extractedText && uploadedFile?.documentId) {
-        try {
-          const ocrResponse = await axiosInstance.post("/documents/extract-text",  { customId: uploadedFile?.documentId });
-          extractedText = ocrResponse.data.text || "";
-        } catch (ocrError) {
-          console.error("OCR extraction failed:", ocrError);
-          toast.error("Failed to extract text from document.");
-        }
-      }
-
-      console.log("uploadedFile.documentId", uploadedFile.documentId);
-
-      const tempMessages = [...messages, userMessage];
-
-      // In handleSendMessage (before sending payload):
-      const useDocContext = shouldUseDocumentContext(currentMessage, uploadedFile?.documentId);
-
-      // Send the message to the backend via our sendMessage API function
-      const chatResponse = await sendMessage(currentMessage, sessionId, setSessionId, tempMessages, setMessages, uploadedFile?.documentId || null, extractedText || "", useDocContext);
-
-      console.log("Received chatResponse from backend:", chatResponse);
-
-      // Handle AI response
-      const aiResponse = chatResponse?.message || "AI response format is not as expected";
-      if (!chatResponse?.content) {
-        console.error("Unexpected response format:", chatResponse);
-      }
-
-    } catch (error) {
-      console.error("Failed to get AI response:", error);
-      const errorMessage = error.response?.data?.error || "Failed to get response";
-
-      // Add fallback response if backend fails
-      setMessages((prevMessages) => [...prevMessages, { role: "ai", content: errorMessage, timestamp: new Date() }]);
+    } catch (err) {
+      console.error("Chat error:", err);
+      setMessages(prev => [
+        ...prev,
+        { role: "ai", content: err.response?.data?.error || "Failed to get response", timestamp: new Date() }
+      ]);
     } finally {
       setIsSending(false);
     }
   };
 
-  const archiveChatSession = async () => {
+  const handleLogout = async () => {
+    const sessionId = localStorage.getItem("sessionId");
     const userId = localStorage.getItem("userId");
-    if (!currentSessionId || !userId) return;
+    const documentId = localStorage.getItem("documentId");
 
-    try {
-      await axiosInstance.post(
-                 "/chat/archive",
-                 {
-                   sessionId: currentSessionId,
-                   userId,
-                   documentId: uploadedFile?.documentId || null
-             },
-             { headers: { Authorization: `Bearer ${localStorage.getItem("accessToken")}` } }
-           );
-         } catch (err) {
-           console.error("Archive error:", err);
-         }
-     };;
-  useEffect(() => {
-    let timeout;
+    await archiveChatSession(sessionId, userId, documentId);
 
-    const handleVisibilityChange = () => {
-      clearTimeout(timeout);
-      if (document.visibilityState === "hidden" && currentSessionId) {
-        timeout = setTimeout(() => archiveChatSession(), 2000); // Archive only after 2 seconds
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      clearTimeout(timeout);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [currentSessionId]);
-
-
-      useEffect(() => {
-          const handleVisibilityChange = () => {
-              if (document.visibilityState === "hidden") {
-                  archiveChatSession();
-              }
-          };
-
-          document.addEventListener("visibilitychange", handleVisibilityChange);
-
-          return () => {
-              document.removeEventListener("visibilitychange", handleVisibilityChange);
-          };
-      }, [currentSessionId]);
+    localStorage.clear();
+    sessionStorage.clear();
+    navigate("/login");
+  };
    // Also handle browser/tab close
        useEffect(() => {
            const handleBeforeUnload = (e) => {
@@ -476,7 +449,25 @@ const ChatWithUpload = ({ currentSessionId , onUploadSuccess = () => {} }) => {
              };
          }, [currentSessionId, uploadedFile]);
 
-      return (
+  useEffect(() => {
+    if (!sessionId) {
+      setSessionId(uuidv4());
+    }
+  }, [sessionId]);
+
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        archiveChatSession();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [currentSessionId]);
+
+
+  return (
     <Container className="chatbot-container mb-3">
       <Row className="justify-content-center ">
         <Col md={8} lg={6} style={{ width: "90%", color: "black" }}>
@@ -484,15 +475,20 @@ const ChatWithUpload = ({ currentSessionId , onUploadSuccess = () => {} }) => {
             <Card.Body>
               <h4 className="text-center mb-3" style={{ color: "black" }}>Government Document AI</h4>
 
+              <ButtonGroup className="mb-3">
+                <Button variant="outline-secondary" onClick={handleClearChat}>Clear Chat</Button>
+                <Button variant="outline-primary" onClick={handleNewChat}>New Chat</Button>
+              </ButtonGroup>
+
+
               {/* File Upload Section */}
               <FileUpload
                   onFileSelect={handleFileUpload}
                   uploadedFile={uploadedFile}
                   uploading={uploading}
                   uploadProgress={uploadProgress}
-                  onRemove={() => setUploadedFile(null)}
+                  onRemove={handleRemove}
               />
-
 
               {/* Chat Messages Section */}
               <ListGroup className="chat-messages p-2" style={{ maxHeight: "400px", overflowY: "auto" }}>
@@ -530,11 +526,24 @@ const ChatWithUpload = ({ currentSessionId , onUploadSuccess = () => {} }) => {
 
 
                     <div className="message-content mt-2 p-2 rounded">
-                      <span style={{ flex: 1 }}>{msg.content}</span>
+                     <span style={{ flex: 1 }}>
+                        {msg.content.replace(/\*\*(.*?)\*\*/g, '$1')}
+                     </span>
                       {msg.role === "ai" && (
-                        <Button variant="link" onClick={() => handlePlayAudio(msg.content)}>
-                          <FaVolumeUp size={20} color="blue" />
-                        </Button>
+                          <ButtonGroup size="sm" className="ms-2">
+                            {/* Play original speech */}
+                            <Button variant="link" onClick={() => handlePlayAudio(msg.content)}>
+                              <FaVolumeUp size={20} color="blue" />
+                            </Button>
+                            {/* Play English translation */}
+                            <Button variant="link" onClick={() => handleTranslateAndPlay(msg.content, "en-US")}>
+                              EN
+                            </Button>
+                            {/* Play Marathi translation */}
+                            <Button variant="link" onClick={() => handleTranslateAndPlay(msg.content, "mr-IN")}>
+                              MR
+                            </Button>
+                          </ButtonGroup>
                       )}
                     </div>
                   </ListGroup.Item>
@@ -544,27 +553,17 @@ const ChatWithUpload = ({ currentSessionId , onUploadSuccess = () => {} }) => {
               </ListGroup>
 
 
-              {/* Debug: Display raw messages state */}
-              {/* <pre>{JSON.stringify(messages, null, 2)}</pre> */}
-
-
-              <select value={voiceLang} onChange={e => setVoiceLang(e.target.value)}>
-                <option value="en-US">English</option>
-                <option value="hi-IN">Hindi</option>
-                <option value="mr-IN">Marathi</option>
-              </select>
-
               {/* Message Input Section */}
               <div className="d-flex align-items-center mt-3">
                 <MessageInput
                   message={message}
                   setMessage={setMessage}
                   sendMessage={handleSendMessage}
-                  loading={false}
+                  loading={isSending}
                 />
                 <OverlayTrigger placement="top" overlay={<Tooltip>{isRecording ? "Stop Voice Input" : "Start Voice Input"}</Tooltip>}>
                   <Button variant="link" onClick={handleVoiceInput}>
-                    {isRecording ? <FaMicrophoneSlash size={24} color="red" /> : <FaMicrophone size={24} color="green" />}
+                    {listening ? <FaMicrophoneSlash size={24} color="red" /> : <FaMicrophone size={24} color="green" />}
                   </Button>
                 </OverlayTrigger>
 

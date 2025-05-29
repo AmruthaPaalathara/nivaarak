@@ -1,6 +1,6 @@
 import React, { Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import axios from "axios";
+
 import Navbar from "./partials/Header";
 import CustomCarousel from "./homePage/Carousel";
 import About from "./homePage/About";

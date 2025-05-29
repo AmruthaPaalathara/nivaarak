@@ -4,16 +4,18 @@ const { getStatusStats, getAdminApplicationChartStats} = require('../../../contr
 const { authenticateJWT } = require('../../../middleware/authenticationMiddleware/authMiddleware');
 const { isAdmin } = require("../../../middleware/rbac");
 const { getAllAdminApplications, performTextExtraction, getAllDepartments, getDepartmentApplications, getStatusApplications} = require("../../../controllers/adminDashboard/adminDashboardController");
+const {verifyContextMatch} = require("../../../controllers/adminDashboard/ragCheckController");
 
 router.get("/", (req, res) => res.json({ success: true, message: "Admin Dashboard API is working!" }));
 // @desc    Returns summarized stats (e.g., Approved/Rejected counts)
-// @route   GET /api/dashboard/status-stats
-router.get('/status-stats', authenticateJWT(), isAdmin, getStatusStats);
+
+router.get('/status-stats',authenticateJWT(), isAdmin, getStatusStats);
 
 // Application chart stats
-router.get( "/admin-applications",  authenticateJWT(),
-    (req, res, next) => {   // ✏️ debug middleware
-        console.log("🕵️‍♂️ req.user.role on admin-applications:", req.user?.role);
+router.get( "/admin-applications",
+    authenticateJWT(["admin"]),               // ← verify JWT & require role
+    (req, res, next) => {                     // ← now req.user.role will exist
+        console.log("🕵️‍♂️ req.user.role:", req.user.role);
         next();
     },
     isAdmin,
@@ -21,9 +23,9 @@ router.get( "/admin-applications",  authenticateJWT(),
 );
 
 // Full application data
-router.get('/all-applications', authenticateJWT(), isAdmin, getAllAdminApplications);
+router.get('/all-applications',  authenticateJWT(), isAdmin, getAllAdminApplications);
 
-router.post("/check-documents/:applicationId", authenticateJWT(),  isAdmin, authenticateJWT(), isAdmin, performTextExtraction);
+router.post("/check-documents/:applicationId",   authenticateJWT(), isAdmin, performTextExtraction);
 
 router.get('/departments', authenticateJWT(),  isAdmin, getAllDepartments);
 
@@ -31,5 +33,6 @@ router.get('/department-applications', authenticateJWT(),  isAdmin, getDepartmen
 
 router.get('/status-applications', authenticateJWT(),  isAdmin, getStatusApplications);
 
+router.post("/rag/verify-context", authenticateJWT(), isAdmin, verifyContextMatch);
 
 module.exports = router;

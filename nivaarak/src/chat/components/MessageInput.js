@@ -33,24 +33,20 @@
   }, []);
 
 
-    // Handle send message with validation
-    const handleSendMessage = (e) => {
-        if (message.trim()) {
-            sendMessage(message); // Send message (pass message to function)
-        } else {
-            // Optionally, you could add a toast or error message to inform the user
-            console.log("Message is empty!");
-        }
-    };
-
-      // Handle Enter key submission
-      const handleKeyDown = (e) => {
-          if (e.key === "Enter"&& !e.shiftKey) {
-              // if (e.shiftKey) return; // Allow Shift+Enter for new lines
-              e.preventDefault(); // Prevent new lines on plain Enter
-              handleSendMessage();
+      const handleSendMessage = (e) => {
+          e.preventDefault();
+          if (message.trim()) {
+              sendMessage(e); // ✅ Do NOT pass e
           }
       };
+
+      const handleKeyDown = (e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault(); // Prevent new line
+              sendMessage(e);      // ✅ Do NOT pass e
+          }
+      };
+
 
     return (
       <InputGroup className="message-input w-100">
@@ -78,7 +74,7 @@
           aria-label={loading ? "Sending message, please wait..." : "Send message"}
           aria-busy={loading} // Indicate busy state
           aria-disabled={loading}
-          onClick={sendMessage}
+          onClick={handleSendMessage}
           className="send-button d-flex align-items-center justify-content-center"
         >
           {loading ? (

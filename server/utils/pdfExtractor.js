@@ -1,6 +1,6 @@
 const fs = require("fs");
 const pdfParse = require("pdf-parse");
-const { extractTextWithOCR } = require("./ocrFallbackExtractor");
+const { extractTextWithOCR } = require("./uploadOcrExtractor");
 
 const extractTextFromPDF = async (filePath) => {
   try {

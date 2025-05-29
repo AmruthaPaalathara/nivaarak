@@ -8,6 +8,7 @@ const validateLogin = require("../../middleware/authenticationMiddleware/validat
 const validateForgotPassword = require("../../middleware/authenticationMiddleware/validateForgotPassword.js");
 const { authenticateJWT } = require("../../middleware/authenticationMiddleware/authMiddleware.js");
 const { loginLimiter, authLimiter, refreshLimiter } = require("../../middleware/rateLimiting.js");
+const {authenticateSession} = require("../../middleware/authenticationMiddleware/authMiddleware");
 
 // User Registration
 router.post("/register",validateRegistration, authController.registerUser);

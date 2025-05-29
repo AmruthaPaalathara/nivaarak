@@ -5,12 +5,13 @@ const { uploadDocument, extractText, getDocuments, getDocumentById, archiveTempD
 const fs = require('fs'); // Add this line to import the fs module
 const path = require('path');  // Import the 'path' module
 const { v4: uuidv4 } = require("uuid");
-const { extractTextFromPDF } = require("../../utils/pdfExtractor");
+const { extractTextWithOCR } = require("../../utils/chatbotOcrExtractor");
 const router = express.Router();
 const uploadFolder = path.join(__dirname, "../../uploads/chatbot/");
 const { chatbotUpload, handleUploadErrors } = require("../../middleware/multerConfigs");
 
 const isAuthenticated = require("../../middleware/authenticationMiddleware");
+const {authenticateJWT} = require("../../middleware/authenticationMiddleware/authMiddleware");
 
 // Ensure the upload folder exists
 fs.mkdirSync(uploadFolder, { recursive: true });
@@ -78,43 +79,14 @@ router.use(handleMulterErrors);
  * @desc    Upload a PDF document (No authentication Required)
  * @access  Private (authentication is required)
  */
-router.post("/upload",isAuthenticated,  chatbotUpload.single("file"), handleMulterErrors, validateFileType, async (req, res) => { //only 1 file at a time can be uploaded
-  console.log("Received upload request:", req.body);
-
-  if (!req.body.userId) {
-    console.error("User ID is missing. Authentication issue?");
-    return res.status(401).json({ error: "Unauthorized: Missing User ID" });
-  }
-  if (!req.file) {
-    console.error("File upload missing or failed.");
-    return res.status(400).json({ error: "File upload failed or no file received." });
-  }
-  console.log("Received file:", req.file);
-
-    console.log("File uploaded successfully:", req.file);
-try {
-    const documentId = uuidv4(); // Generate a unique ID
-  const extractedText = await extractTextFromPDF(req.file.path);
-  if (!extractedText || extractedText.trim() === "") {
-    console.warn("No text extracted from document.");
-  }
-
-  console.log("Document ID updated:", documentId);
-    return res.json({
-      success: true,
-      message: "File uploaded successfully",
-      data: {
-        customId: documentId,
-        extractedText: extractedText || "No text extracted",
-        file: req.file, // Keep original file metadata
-      },
-    });
-
-  } catch (error) {
-    console.error(" File upload error:", error);
-    return res.status(500).json({ error: error.message || "Internal server error" });
-  }
-});
+router.post(
+    "/upload",
+    authenticateJWT(),
+    chatbotUpload.single("file"),
+    handleMulterErrors,
+    validateFileType,
+    uploadDocument   // ← here's the switch
+);
 
 /**
  * @route   GET /api/chat/documents/
@@ -135,9 +107,18 @@ router.get("/:documentId", isAuthenticated, getDocumentById);
  * @desc    Extract text from an uploaded document
  * @access  Private (authentication is required)
  */
-router.post("/extract-text", isAuthenticated, extractText);
+
+
+// Log‐and‐continue middleware
+function logExtractHit(req, res, next) {
+  console.log("🔔 /extract-text endpoint hit for customId:", req.body.customId);
+  next();
+}
+
+router.post("/extract-text", logExtractHit, extractText);
 
 router.post("/archive-temp", isAuthenticated, archiveTempDocument);
+
 
 module.exports = router;
 

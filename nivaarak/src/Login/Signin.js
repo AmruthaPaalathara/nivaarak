@@ -1,11 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
-import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext'; // Import useAuth
 import { Form, Button, Container, Row, Col, Alert, Spinner } from 'react-bootstrap';
 import '../css/style.css'; // Import your custom CSS file
-import { refreshToken } from "../utils/refreshToken";
-import { authFetch } from "../utils/authFetch";
 import API from "../../src/utils/api";
 
 function Signin() {
@@ -15,6 +12,8 @@ function Signin() {
     const [error, setError] = useState('');
     const navigate = useNavigate();
     const { login } = useAuth(); // Use the login function from AuthContext
+    const [credentials, setCredentials] = useState({ username: "", password: "" });
+    const [fieldErrors, setFieldErrors] = useState([]);
 
     // const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001'; // Fallback API URL
 
@@ -23,6 +22,10 @@ function Signin() {
         console.log("Current path is now: ", location.pathname);
     }, [location]);
 
+    const handleChange = (e) => {
+        setCredentials({ ...credentials, [e.target.name]: e.target.value });
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
@@ -30,60 +33,58 @@ function Signin() {
 
         // Validate input fields
         if (!username || !password) {
-          setError("Username and password are required.");
-          setLoading(false);
-          return;
+            setError("Username and password are required.");
+            setLoading(false);
+            return;
         }
 
         try {
-          const response = await API.post("/auth/login",
-            {
-                username: username.trim(),
-                password,
-            },
-              {
-                  headers: {
-                      "Content-Type": "application/json",
-                  },
-                  withCredentials: true, // to send cookies like session ID
-              }
-              );
+            const response = await API.post("/auth/login",
+                { username, password },
+                {
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    withCredentials: true, // to send cookies like session ID
+                });
 
             const data = response.data;
 
             if (data.accessToken && data.userId) {  //  Ensure userId is received
-              localStorage.setItem("accessToken", data.accessToken);
-              // localStorage.setItem("refreshToken", data.refreshToken);
-              localStorage.setItem("sessionId", data.sessionId);
-              localStorage.setItem("userId", data.userId);
+                localStorage.setItem("accessToken", data.accessToken);
+                // localStorage.setItem("refreshToken", data.refreshToken);
+                localStorage.setItem("sessionId", data.sessionId);
+                localStorage.setItem("userId", data.userId);
 
 
-              console.log(" User ID stored:", data.userId);
-              console.log("Access Token stored:", data.accessToken);
+                console.log(" User ID stored:", data.userId);
+                console.log("Access Token stored:", data.accessToken);
 
-              // Mark user as authenticated (update your state/context)
-              login(data.accessToken);
+                // Mark user as authenticated (update your state/context)
+                login(data.accessToken, true);
 
-            // Redirect based on user role (optional)
-            if (data.role === "admin") {
-              navigate("/admin-dashboard");
+                // Redirect based on user role (optional)
+                if (data.role === "admin") {
+                    navigate("/admin-dashboard");
+                } else {
+                    navigate("/"); // Redirect to a default dashboard
+                }
             } else {
-              navigate("/"); // Redirect to a default dashboard
+                setError("Login failed. Please try again.");
             }
-          } else {
-            setError("Login failed. Please try again.");
-          }
         } catch (err) {
-          if (err.message === "Failed to fetch") {
-            setError("Unable to connect to the server. Please check your internet connection.");
-          } else {
-            setError(err.message || "Invalid username or password. Please try again.");
-          }
-          setPassword(""); // Clear the password field
+            const resp = err.response;
+            if (resp?.status === 400 && Array.isArray(resp.data.errors)) {
+                // Extract each error.message
+                setFieldErrors(resp.data.errors.map(e => e.message));
+            } else {
+                setFieldErrors([resp?.data?.message || "Something went wrong."]);
+            }
+
         } finally {
-          setLoading(false);
+            setLoading(false);
         }
-      };
+    };
 
     const handleLogout = () => {
         localStorage.clear();
@@ -95,7 +96,15 @@ function Signin() {
             <Row className="justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
                 <Col xs={12} md={8} lg={6} className="signin-form p-4 shadow rounded bg-light">
                     <h2 className="text-center mb-4">Sign In</h2>
-                    {error && <Alert variant="danger">{error}</Alert>}
+                    {fieldErrors.length > 0 && (
+                        <Alert variant="danger">
+                            <ul className="mb-0">
+                                {fieldErrors.map((msg, i) => (
+                                    <li key={i}>{msg}</li>
+                                ))}
+                            </ul>
+                        </Alert>
+                    )}
                     <Form onSubmit={handleSubmit}>
                         <Form.Group className="mb-3">
                             <Form.Label>Username</Form.Label>
@@ -103,7 +112,7 @@ function Signin() {
                                 type="text"
                                 placeholder="Enter username"
                                 value={username}
-                                onChange={(e) => setUsername(e.target.value.trim())}
+                                onChange={(e) => setUsername(e.target.value)}
                                 required
                                 minLength={3}
                                 maxLength={20}

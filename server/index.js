@@ -32,7 +32,7 @@ const cors = require("cors");
 require("dotenv").config();
 const errorHandler = require("./middleware/errorHandler"); // Import Error Middleware
 
-const certificateRoutes = require("./routes/certificateApplicationRoutes.js");
+const certificateRoutes = require("./routes/application/certificateApplicationRoutes.js");
 const documentRoutes = require("./routes/chatbot/documentRoute.js");
 
 const app = express();

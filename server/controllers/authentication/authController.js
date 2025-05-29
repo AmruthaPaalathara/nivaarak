@@ -106,7 +106,11 @@ exports.loginUser = async (req, res) => {
       return res.status(401).json({ success: false, message: "Invalid password. Try again." });
     }
     const tokenPayload = {  userId: user.userId, username: user.username,role: user.role, };
-    const accessToken = jwt.sign(  tokenPayload, process.env.JWT_SECRET, { expiresIn: "15m" });  // Short-lived
+    console.log("🔍 token payload:", tokenPayload);
+
+    const accessToken = jwt.sign(  tokenPayload, process.env.JWT_SECRET, { expiresIn: "1h" });  // Short-lived
+    console.log("🔍 decoded accessToken:", accessToken);
+
     const refreshToken = jwt.sign(tokenPayload, process.env.REFRESH_SECRET, { expiresIn: "30d" });  // Long-lived
     // Storing refresh token in httpOnly cookie (more secure approach):
     res.cookie("refreshToken", refreshToken, {
@@ -121,11 +125,13 @@ exports.loginUser = async (req, res) => {
     const newSession = new Session({
       sessionId,
       userId: user.userId,
+      role : user.role,
       deviceInfo: req.headers["user-agent"] || "Unknown Device",
       sessionType: "web",
       createdAt: new Date()
     });
     await newSession.save();
+
     //  Return JWT token and session ID to frontend
     return res.status(200).json({
       success: true,

@@ -29,8 +29,6 @@ const documentSchema = new mongoose.Schema( //creates documentSchema that define
     { timestamps: true } // Automatically tracks `createdAt` and `updatedAt`
 );
 
-
-
 // Add indexes
 documentSchema.index({ createdAt: -1 }); // Faster retrieval of recent documents
 documentSchema.index({ filename: 1 }); // Index for filename
